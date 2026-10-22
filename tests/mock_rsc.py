@@ -160,10 +160,10 @@ def answer(q, v):
                 "isGlobalPolicyEnforced": True}}}
     if "passwordComplexityPolicy" in q:
         raise PermissionError("VIEW_SECURITY_POLICY denied for host vc01.acme.example")
+    if "hasIdpConfigured" in q:
+        return {"hasIdpConfigured": True}
     if "allCurrentOrgIdentityProviders" in q:
-        return {"allCurrentOrgIdentityProviders": [{"name": "ACME Okta", "isDefault": True,
-                "allowIdpInitiatedSso": False, "isForceAuthnEnabled": True, "expirationDate": "2027-01-01T00:00:00Z",
-                "authorizedGroupsCount": 2, "activeUserCount": 40}]}
+        raise PermissionError("Missing 'Manage LDAP and SSO' (MANAGE_AUTH_DOMAIN) permission")
     if "serviceAccounts" in q:
         return {"serviceAccounts": {"nodes": [{"name": "veeam-sync", "clientId": "client-abc", "lastLogin": None,
                                                "roles": [{"name": "Administrator"}]}]}}

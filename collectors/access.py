@@ -35,13 +35,9 @@ QUERIES = {
         } }""",
         "passwordComplexityPolicy",
     ),
-    "identityProviders": (
-        """query { allCurrentOrgIdentityProviders {
-          name isDefault allowIdpInitiatedSso isForceAuthnEnabled expirationDate
-          authorizedGroupsCount activeUserCount
-        } }""",
-        "allCurrentOrgIdentityProviders",
-    ),
+    # A boolean, not allCurrentOrgIdentityProviders: the full provider record includes fields that need the
+    # "Manage LDAP and SSO" permission (MANAGE_AUTH_DOMAIN), and rule A-3 only asks whether any provider exists.
+    "hasIdp": ("query { hasIdpConfigured }", "hasIdpConfigured"),
     "serviceAccounts": (
         "query { serviceAccounts { nodes { name clientId lastLogin roles { name } } } }",
         "serviceAccounts.nodes",
