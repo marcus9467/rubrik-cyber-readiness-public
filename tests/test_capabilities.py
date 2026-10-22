@@ -82,10 +82,17 @@ def test_threat_hunting_states():
 
 def test_threat_monitoring_combines_accounts_and_objects_and_caps_over_100():
     roots = {"AWS_NATIVE_ACCOUNT": {"total": 4, "threatMonitoringEnabled": 2},
-             "CDM_CLUSTER": {"total": 9, "threatMonitoringEnabled": 0}}
+             "CDM_CLUSTER": {"total": 4, "threatMonitoringEnabled": 2}}
     c = compute(data(roots=roots, objects={"enabledObjects": 3018, "supportedObjects": 2808}), OK)["Threat Monitoring"]
-    assert c["state"] == "partial" and c["score"] == 75  # (0.5 accounts + 1.0 objects) / 2, CDM root ignored
+    assert c["state"] == "partial" and c["score"] == 75  # (4 of 8 roots = 0.5, + 1.0 objects) / 2
+    assert "4 of 8 clusters, cloud accounts and SaaS accounts" in c["evidence"]
     assert "more enabled than supported" in c["evidence"]
+
+
+def test_threat_monitoring_counts_cdm_clusters_and_leaves_out_unreadable_ones():
+    roots = {"CDM_CLUSTER": {"total": 8, "threatMonitoringEnabled": 8, "notAssessed": [{"id": "x", "name": "x"}]}}
+    c = compute(data(roots=roots, objects=None), OK)["Threat Monitoring"]
+    assert c["state"] == "active" and c["score"] == 100  # the disconnected cluster is neither credited nor counted off
 
 
 def test_threat_monitoring_with_nothing_reporting_is_blind():

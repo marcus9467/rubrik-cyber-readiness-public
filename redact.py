@@ -149,10 +149,14 @@ def redact_bundle(bundle):
         v["signals"] = [[s[0], ps("obj", s[1])] for s in v.get("signals", [])]
 
     # Threat monitoring roots (cloud account / subscription names and ids)
-    for root in (d.get("threat", {}).get("roots") or {}).values():
-        for i in (root.get("items") or []) if isinstance(root, dict) else []:
-            i["id"] = ps("acct", i.get("id"))
-            i["name"] = ps("acct", i.get("name"))
+    # CDM_CLUSTER items are clusters, so they share pseudonyms with the clusters section above.
+    for root_type, root in (d.get("threat", {}).get("roots") or {}).items():
+        if not isinstance(root, dict):
+            continue
+        kind = "cluster" if root_type == "CDM_CLUSTER" else "acct"
+        for i in (root.get("items") or []) + (root.get("notAssessed") or []):
+            i["id"] = ps(kind, i.get("id"))
+            i["name"] = ps(kind, i.get("name"))
 
     # Alerting. Current bundles hold counts only. Bundles collected before 2026-10-16 also stored the raw webhook
     # records (names, ids, providers), which no rule reads, so drop them rather than pseudonymize them.
