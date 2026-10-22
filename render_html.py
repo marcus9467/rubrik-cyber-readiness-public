@@ -69,10 +69,24 @@ def _font_faces():
     return "\n".join(faces)
 
 
+def logo_status():
+    """One line saying whether the report will carry the logo. The logo is supplied locally and may be absent."""
+    p = ASSETS / "rubrik-logo-primary-linear.svg"
+    if not p.exists():
+        return f"logo: not found, using the text mark. To brand the report, add {p}"
+    try:
+        head = p.read_text(errors="replace")[:2000]
+    except OSError as e:
+        return f"logo: {p} could not be read ({e}), using the text mark"
+    if "<svg" not in head:
+        return f"logo: {p} is not an SVG, using the text mark"
+    return f"logo: using {p}"
+
+
 def _logo_uri():
     """Official linear logo as a data URI with an explicit size (margin boxes use the intrinsic size)."""
     p = ASSETS / "rubrik-logo-primary-linear.svg"
-    if not p.exists():
+    if not p.exists() or "<svg" not in p.read_text(errors="replace")[:2000]:
         return None
     svg = p.read_text()
     svg = re.sub(r"<svg ", '<svg width="58" height="24" ', svg, count=1)
@@ -484,6 +498,7 @@ def build(bundle, out_path, previous=None):
     """Write report.html next to out_path and print it to out_path with headless Chrome."""
     if not Path(CHROME).exists():
         raise SystemExit(f"Chrome not found at {CHROME}. Set CHROME, or use --style classic.")
+    print(logo_status())
     html, result = build_html(bundle, previous)
     out_path = Path(out_path)
     html_path = out_path.with_suffix(".html")
