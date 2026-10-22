@@ -38,7 +38,7 @@ You do **not** need Chrome, fonts or any Rubrik assets. Your Rubrik team uses th
 Get this folder from your Rubrik contact (zip or repository), then open a terminal inside it:
 
 ```
-cd rubrik-cyber-readiness
+cd rubrik-cyber-readiness-public
 ```
 
 Python users also run `pip install requests`. PowerShell needs nothing else.
