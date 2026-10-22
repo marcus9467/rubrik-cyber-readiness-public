@@ -30,7 +30,7 @@ def hardened():
                 "ipAllowlist": {"enabled": True, "ipCidrs": ["10.0.0.0/8"]},
                 "lockout": {"isBruteForceLockoutEnabled": True},
                 "passwordPolicy": {"lengthPolicy": {"isActive": True, "defaultValue": 14}},
-                "identityProviders": [{"name": "idp"}],
+                "hasIdp": True,
                 "serviceAccounts": [{"name": "a", "lastLogin": RECENT}],
             },
             "sla": {"inUse": 4, "inUseLocked": 4, "retentionLocked": 4, "total": 4,
@@ -473,3 +473,17 @@ def test_backup_health_rule_scales_and_stays_silent_when_clean_or_unknown():
     inv["backupHealth"] = {"inCompliance": 80, "outOfCompliance": 20, "notAvailable": 3, "empty": 1}
     f = next(x for x in score(b)["findings"] if x["id"] == "C-5")
     assert f["severity"] == "high" and "4 could not be assessed" in f["evidence"]
+
+
+def test_sso_rule_fires_only_on_an_explicit_false():
+    b = hardened()
+    acc = b["data"]["access"]
+    assert "A-3" not in ids(b)  # hasIdp True
+    acc["hasIdp"] = False
+    assert "A-3" in ids(b)
+    acc["hasIdp"] = {"error": "denied"}
+    assert "A-3" not in ids(b)  # unknown is never reported as a gap
+    del acc["hasIdp"]
+    assert "A-3" not in ids(b)
+    acc["hasIdp"] = None
+    assert "A-3" not in ids(b)

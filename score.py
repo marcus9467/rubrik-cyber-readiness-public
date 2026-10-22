@@ -178,8 +178,9 @@ def a_lockout(d):
 
 
 def a_no_sso(d):
-    idps = d.get("access", {}).get("identityProviders")
-    if not _ok(idps) or idps:
+    # hasIdp is a boolean. Only an explicit False means "no provider"; an error stub or a missing key is unknown.
+    has = d.get("access", {}).get("hasIdp")
+    if has is not False:
         return None
     return _f("A-3", "Access", "high", "No SSO identity provider configured",
               "All users authenticate with local passwords.",
