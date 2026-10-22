@@ -428,14 +428,14 @@ def roadmap(findings, rows, caps=None):
     sev = {"critical": "Critical", "high": "High", "medium": "Medium", "low": "Low", None: "None"}
     cs = "".join(f"<tr><td>{esc(n)}</td><td class='r'><b>{c}</b></td><td>{sev[w]}</td></tr>"
                  for n, c, w in csf_rows(findings))
-    out = ['<h2><span class="num">3.</span> Roadmap</h2>',
+    out = ['<div class="keep"><h2><span class="num">3.</span> Roadmap</h2>',
            "<p>What to do and when.</p>",
            '<div class="two"><div><h3 style="margin-top:2pt">Projected posture score</h3>'
            f"<table>{pr}</table></div><div><h3 style=\"margin-top:2pt\">By NIST CSF function</h3>"
            f"<table><tr><th>Function</th><th class='r'>Findings</th><th>Worst</th></tr>{cs}</table></div></div>",
            '<p class="small">The projection assumes every finding in earlier phases is fully resolved and nothing '
            "new appears. A detection capability keeps its current score until the finding that closes the gap is "
-           "resolved.</p>"]
+           "resolved.</p></div>"]
     p = plan(findings)
     for key in (30, 60, 90):
         if not p[key]:
@@ -544,11 +544,25 @@ def archive_summary(data):
         ent = "<p><b>RCV entitlement.</b> No active RCV entitlement.</p>"
     else:
         ent = "<p><b>RCV entitlement.</b> Not known: the entitlement query returned no data.</p>"
+    imm = ""
+    if t:
+        i = t["rcvImmutability"]
+        parts = []
+        if i["blob"]:
+            parts.append(f"{i['blob']} with blob-level immutability")
+        if i["container"]:
+            parts.append(f"{i['container']} with container-level immutability (deprecated)")
+        if i["none"]:
+            parts.append(f"{i['none']} with no immutability")
+        if i["not_reported"]:
+            parts.append(f"{i['not_reported']} where RSC does not report immutability")
+        if parts and t["rcv"]["count"]:
+            imm = f"<p><b>RCV immutability.</b> {esc('; '.join(parts))}.</p>"
     why = ('<div class="callout"><b>Why RCV matters.</b> Rubrik Cloud Vault is stored outside your cloud tenancy, so '
            "the credentials for your own cloud accounts do not reach it. Archives in your own account can be "
-           "reached with those credentials. Deleting RCV data from inside RSC is controlled separately, by "
-           "retention lock and quorum approval (findings S-1 and Q-2).</div>")
-    return ('<h3>Archive storage</h3>' + table + ro + ent + why)
+           "reached with those credentials. Inside RCV, immutability stops snapshots being altered or deleted "
+           "before their retention period ends.</div>")
+    return ('<h3>Archive storage</h3>' + table + ro + ent + imm + why)
 
 
 def _archive_location(target_type):
@@ -557,10 +571,20 @@ def _archive_location(target_type):
     return "Your cloud account" if target_type in inventory_report.CLOUD_TYPES else "Other storage"
 
 
+IMMUTABILITY_LABEL = {"blob": "Blob-level", "container": "Container-level (deprecated)", "none": "None",
+                      "not_reported": "Not reported by RSC"}
+
+
 def _archive_status(r):
     if r.get("readOnly"):
         return "Read-only, not counted"
     return {"READ_WRITE": "Read/write"}.get(r.get("status"), (r.get("status") or "unknown").replace("_", " ").title())
+
+
+def _immutability_cell(r):
+    if r.get("type") not in inventory_report.RCV_TYPES:
+        return "n/a"
+    return IMMUTABILITY_LABEL[inventory_report.rcv_immutability(r)]
 
 
 def archive_inventory(data):
@@ -571,13 +595,14 @@ def archive_inventory(data):
     body = "".join(
         f"<tr><td>{esc(r.get('name') or r.get('id') or '')}</td><td class='mono small'>{esc(r.get('type') or 'unknown')}</td>"
         f"<td>{esc(_archive_location(r.get('type')))}</td>"
+        f"<td>{esc(_immutability_cell(r))}</td>"
         f"<td>{esc(_archive_status(r))}</td>"
         f"<td class='r'>{_tb((r.get('bytes') or 0) / inventory_report.TB)}</td></tr>"
         for r in a["targets"]["rows"])
     return ('<h2 class="pb">Appendix. Archive targets</h2>'
             "<p>Every archive target RSC reports, largest first. Read-only targets mirror another archive and are not "
             "counted in the totals in Section 2.</p>"
-            "<table><tr><th>Target</th><th>Type</th><th>Location</th><th>Status</th><th class='r'>Stored</th></tr>"
+            "<table><tr><th>Target</th><th>Type</th><th>Location</th><th>Immutability</th><th>Status</th><th class='r'>Stored</th></tr>"
             f"{body}</table>")
 
 

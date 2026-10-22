@@ -878,7 +878,10 @@ function Get-RcArchive($Client) {
 query Targets($after: String) {
   targets(after: $after, first: 200) {
     count
-    nodes { id name targetType consumedBytes status }
+    nodes {
+      id name targetType consumedBytes status
+      ... on RubrikManagedRcsTarget { tier isVersionLevelImmutabilityEnabled immutabilityPeriodDays }
+    }
     pageInfo { hasNextPage endCursor }
   }
 }
@@ -896,8 +899,11 @@ query {
     try {
         $nodes = Invoke-RscPaginate $Client $targetsQ 'targets'
         $targets = @(foreach ($n in $nodes) {
+                # Only RCV on Azure reports tier and immutability; the keys are $null for every other target.
                 [ordered]@{ id = $n.id; name = $n.name; type = $n.targetType; bytes = $n.consumedBytes
-                            status = $n.status; readOnly = ($n.status -eq 'READ_ONLY') }
+                            status = $n.status; readOnly = ($n.status -eq 'READ_ONLY')
+                            tier = $n.tier; blobImmutable = $n.isVersionLevelImmutabilityEnabled
+                            lockDays = $n.immutabilityPeriodDays }
             })
     }
     catch { $targets = [ordered]@{ error = (Get-Short $_.Exception.Message) } }

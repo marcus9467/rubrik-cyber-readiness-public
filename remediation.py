@@ -154,6 +154,16 @@ REMEDIATION = {
         "steps": ["Where retention-locked SLAs archive data, enable compliance immutability on the archival location."],
         "docs": [("Archival policy", f"{D}/saas/archival_policy.html")],
     },
+    "S-3": {
+        "steps": [
+            "Create a new Rubrik Cloud Vault location with blob-level immutability. It is on by default for "
+            "clusters running CDM 9.1 and later and cannot be turned off.",
+            "Point the SLA Domains that archive to the old location at the new one.",
+            "Keep the old location until its snapshots expire: snapshots in an existing non-immutable location do "
+            "not become immutable when the cluster is upgraded.",
+        ],
+        "docs": [("Blob-level immutability for RCV locations on Azure", f"{D}/saas/rcv_blob_immutability_azure.html")],
+    },
     "RP-1": {
         "steps": [
             "List the SLA Domains behind the affected objects and rank them by criticality.",
