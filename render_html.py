@@ -304,15 +304,34 @@ def prepared_for(result):
     live = [c for c in caps.values() if c["score"] is not None]
     if not live:
         return ""
-    dark = [d for d, c in caps.items() if c["score"] == 0]
+    # Off (RSC says it is not enabled) and blind (RSC gave us nothing to read) are different findings, so the
+    # headline names them separately, the same split the summary tile uses.
+    blind = [d for d, c in caps.items() if c["state"] == "blind"]
+    off = [d for d, c in caps.items() if c["state"] == "off"]
+    dark = blind + off
     low = [d for d, c in caps.items() if c["score"] is not None and 0 < c["score"] < 100]
     colour = {"active": TEAL, "partial": AMBER, "off": RED, "blind": RED}
+
+    def names_of(ds):
+        return ", ".join(ds[:-1]) + (" and " if len(ds) > 1 else "") + ds[-1]
+
     if dark:
-        names = ", ".join(dark[:-1]) + (" and " if len(dark) > 1 else "") + dark[-1]
-        headline = (f'<div class="alarm"><b>{len(dark)} of {len(live)} detection capabilities returned nothing.</b> '
-                    f"There is no data in RSC for {esc(names)}. In an attack, those are the questions your team "
-                    "would not be able to answer: what is being encrypted, what is already hiding in the backups, "
-                    "what the attacker touched, and what data was exposed.</div>")
+        if blind and off:
+            title = (f"{len(dark)} of {len(live)} detection capabilities are not working: "
+                     f"{len(blind)} returned no data and {len(off)} {'is' if len(off) == 1 else 'are'} switched off.")
+            detail = f"There is no data in RSC for {names_of(blind)}. {names_of(off)} is switched off."
+            if len(off) > 1:
+                detail = detail.replace(" is switched off.", " are switched off.")
+        elif blind:
+            title = f"{len(blind)} of {len(live)} detection capabilities returned nothing."
+            detail = f"There is no data in RSC for {names_of(blind)}."
+        else:
+            title = (f"{len(off)} of {len(live)} detection capabilities "
+                     f"{'is' if len(off) == 1 else 'are'} switched off.")
+            detail = f"RSC reports {names_of(off)} as not enabled."
+        headline = (f'<div class="alarm"><b>{esc(title)}</b> {esc(detail)} In an attack, those are the questions '
+                    "your team would not be able to answer: what is being encrypted, what is already hiding in the "
+                    "backups, what the attacker touched, and what data was exposed.</div>")
     elif low:
         headline = (f"<div class='callout'><b>{len(low)} of {len(live)} detection capabilities cover only part of "
                     "the estate.</b> Anything outside that coverage is invisible to the team during an "
