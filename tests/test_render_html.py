@@ -36,6 +36,31 @@ def test_capability_tile_names_what_is_missing_and_separates_off_from_blind():
     assert "detection capabilities returned no data" not in html  # the old tile counted off as no data
 
 
+def test_headline_separates_off_from_blind():
+    b = bundle()
+    b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")          # blind
+    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}  # off
+    html, _ = build_html(b)
+    assert "2 of 4 detection capabilities are not working: 1 returned no data and 1 is switched off." in html
+    assert "There is no data in RSC for Sensitive Data Discovery. Threat Hunting is switched off." in html
+
+
+def test_headline_for_off_only_does_not_say_returned_nothing():
+    b = bundle()
+    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}
+    html, _ = build_html(b)
+    assert "1 of 4 detection capabilities is switched off." in html
+    assert "returned nothing" not in html
+    assert "no data in RSC" not in html
+
+
+def test_headline_for_blind_only_keeps_returned_nothing():
+    b = bundle()
+    b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    html, _ = build_html(b)
+    assert "1 of 4 detection capabilities returned nothing." in html
+
+
 def test_blind_card_shows_its_reason_and_active_cards_do_not():
     b = bundle()
     b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")
