@@ -47,7 +47,9 @@ SLAS = [
     {"id": "UNPROTECTED", "name": "Unprotected"},
     SLA("s-1", "Gold", isRetentionLockedSla=True, retentionLockMode="COMPLIANCE", protectedObjectCount=40,
         archivalSpecs=[{"isComplianceImmutabilityEnabled": True, "threshold": 1, "thresholdUnit": "DAYS",
-                        "archivalLocationToClusterMapping": [{"location": {"name": "s3-a", "targetType": "AWS"}}]}],
+                        "archivalLocationToClusterMapping": [
+                            {"cluster": {"id": "c-a"}, "location": {"name": "s3-a", "targetType": "AWS"}},
+                            {"cluster": {"id": "c-a"}, "location": {"name": "rcv-az", "targetType": "RCS_AZURE"}}]}],
         replicationSpecsV2=[{"retentionDuration": {"duration": 30, "unit": "DAYS"}, "cluster": {"name": "c-b"},
                              "targetMapping": {"targetType": "CDM"}}]),
     SLA("s-2", "Bronze", protectedObjectCount=12),
@@ -151,7 +153,17 @@ def answer(q, v):
     if "slaDomains" in q and "archivalLocationToClusterMapping" in q:
         return {"slaDomains": PAGE([s for s in SLAS])}
     if "slaDomains" in q:
-        return {"slaDomains": PAGE(SLAS)}
+        # The plain SLA query asks only for threshold and retentionDuration. Answering with the whole object would
+        # put location and cluster names in the sla section, which a real tenant never does.
+        def plain(s):
+            if "archivalSpecs" not in s:
+                return s
+            return {**s,
+                    "archivalSpecs": [{k: a[k] for k in ("isComplianceImmutabilityEnabled", "threshold", "thresholdUnit")
+                                       if k in a} for a in s["archivalSpecs"]],
+                    "replicationSpecsV2": [{"retentionDuration": r.get("retentionDuration")}
+                                           for r in s["replicationSpecsV2"]]}
+        return {"slaDomains": PAGE([plain(s) for s in SLAS])}
     if "ipWhitelist" in q:
         return {"ipWhitelist": {"enabled": True, "mode": "ALLOW", "ipCidrs": ["10.20.30.0/24", "203.0.113.7"]}}
     if "lockoutConfig" in q:
