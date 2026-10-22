@@ -1,8 +1,14 @@
 """Offsite copies: which SLA Domains replicate to another cluster or archive to cloud.
 
-Uses the object count RSC keeps on each SLA, so no per-object queries. A copy flag is
-True / False only when RSC returned the spec list; null means unknown and is never a gap.
+A copy flag is True / False only when RSC returned the spec list; null means unknown and is never a gap.
+
+Object counts are ACTIVE, PROTECTED objects per SLA, from one count-only query per SLA. RSC's own
+protectedObjectCount also counts relic and archived records (on a lab tenant it was nearly double), which made
+the offsite shares describe records no one is backing up. If a per-SLA count fails, that SLA falls back to the
+record count and is listed in `fallbackSlas`, so the two are never mixed silently.
 """
+
+COUNT_Q = "query($f: SnappableFilterInput){snappableConnection(first:1, filter:$f){count}}"
 
 OFFSITE_Q = """
 query Offsite($after: String) {
@@ -46,17 +52,29 @@ def _repl_targets(specs):
              "type": (r.get("targetMapping") or {}).get("targetType")} for r in specs or []]
 
 
+def _active_count(client, sla_id):
+    f = {"slaDomain": {"id": [sla_id]}, "objectState": ["ACTIVE"], "protectionStatus": ["Protected"]}
+    return client.query(COUNT_Q, {"f": f})["snappableConnection"]["count"]
+
+
 def collect(client):
     slas = client.paginate(OFFSITE_Q, "slaDomains")
     # Pseudo-SLAs (unprotected, do not protect) carry no protectedObjectCount field.
     real = [s for s in slas if "protectedObjectCount" in s and not s.get("isArchived")]
-    per_sla = []
+    per_sla, fallback = [], []
     for s in real:
-        n = s.get("protectedObjectCount")
-        if not n:
+        records = s.get("protectedObjectCount")
+        if not records:
             continue
+        try:
+            n = _active_count(client, s["id"])
+        except Exception:
+            n = records  # unknown, not zero: keep the record count and say so
+            fallback.append(s["name"])
+        if not n:
+            continue  # only relic or archived records sit under this SLA
         per_sla.append({
-            "name": s["name"], "objects": n,
+            "name": s["name"], "objects": n, "recordCount": records,
             "replication": _flag(s.get("replicationSpecsV2")),
             "archival": _flag(s.get("archivalSpecs")),
             "replicationTargets": _repl_targets(s.get("replicationSpecsV2")),
@@ -71,6 +89,9 @@ def collect(client):
     known_a = objs(lambda p: p["archival"] is not None)
     known_both = objs(lambda p: p["replication"] is not None and p["archival"] is not None)
     return {
+        "basis": "active-protected",
+        "fallbackSlas": len(fallback),
+        "recordCount": sum(p["recordCount"] for p in per_sla),
         "slasInUse": len(per_sla),
         "objects": objs(lambda p: True),
         "objectsReplicationKnown": known_r,
