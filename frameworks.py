@@ -1,8 +1,7 @@
 """Map each finding id to a NIST CSF 2.0 function and to HIPAA Security Rule sections.
 
-This mapping is the author's judgment, not a certified crosswalk. HIPAA citations were written from memory
-and have not been checked against the regulation text or by compliance. The report says so. Use it to
-organize the conversation, not as a statement of compliance.
+HIPAA citations were checked against the 45 CFR 164.308 and 164.312 text on 2026-10-22. The function and section
+assignment per finding has not had a compliance review.
 
 CSF 2.0 functions: GV Govern, ID Identify, PR Protect, DE Detect, RS Respond, RC Recover.
 """

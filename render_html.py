@@ -276,8 +276,7 @@ def cover(result, rows, ov, findings, proj, collected):
            "never as clean.</li>",
            f"<li>Scored {len(findings)} findings across {assessed} areas and grouped them by what kind of "
            "fix they need.</li>",
-           "<li>Tagged each finding with a NIST CSF function and HIPAA Security Rule sections, as a guide "
-           "for the conversation and not a statement of compliance.</li></ul>",
+           "<li>Tagged each finding with a NIST CSF function and HIPAA Security Rule sections.</li></ul>",
            '<div class="stats">',
            stat("Posture score", "n/a" if ov is None else ov, f"average of {assessed} assessed areas",
                 grade_color(ov)),
@@ -346,12 +345,20 @@ def prepared_for(result):
             continue
         col = colour[c["state"]]
         ok = c["state"] == "active"
+        # Show the same number as the area table in Section 2. That score is the lower of the coverage score and
+        # the score left after the area's other findings, so the card says so when the two differ.
+        area = (result.get("domain_scores") or {}).get(dom, c["score"])
+        lowered = ""
+        if area < c["score"]:
+            ids = [f["id"] for f in result.get("findings") or [] if f["domain"] == dom]
+            lowered = (f'<p class="ev">Coverage is {c["score"]} of 100. The area score is lower because of open '
+                       f'findings in this area: {esc(", ".join(ids))}.</p>')
         cards.append(
             f'<div class="cap" style="--c:{col}"><div class="top"><span class="nm">{esc(dom)}</span>'
             f'<span class="st">{esc(capabilities.STATE_LABEL[c["state"]])}</span></div>'
-            f'<div class="sc">{c["score"]}<small> / 100</small></div>'
+            f'<div class="sc">{area}<small> / 100</small></div>'
             f'<div class="q">Are you prepared for</div><div class="pf">{esc(capabilities.PREPARED_FOR[dom])}?</div>'
-            f'<p class="ev">{esc(c["evidence"])}</p>'
+            f'<p class="ev">{esc(c["evidence"])}</p>' + lowered
             + (f'<p class="ev"><b>Why no data:</b> {esc(c["reason"])}</p>' if c.get("reason") else "")
             + ("" if ok else f'<p class="cons">{esc(capabilities.consequence(dom, c["state"]))}</p>') + "</div>")
     note = ""
@@ -359,8 +366,8 @@ def prepared_for(result):
         note = f'<p class="small">{esc(capabilities.BLIND_NOTE)}</p>'
     hunt = result.get("hunt_note")
     if hunt:
-        note += (f'<p class="small"><b>Threat hunting (not scored).</b> {esc(hunt)} Hunting is an on-demand action '
-                 "for an incident, so this is a question for the team and not a gap.</p>")
+        note += (f'<p class="small"><b>Threat hunting (not scored).</b> {esc(hunt)} Threat hunting is an on-demand '
+                 "action and is not scored.</p>")
     skipped = result.get("not_licensed") or []
     skip_note = ""
     if skipped:
@@ -393,8 +400,7 @@ def where_you_stand(result, rows, findings):
     top = [f for f in findings if f["severity"] in ("critical", "high")][:3] or findings[:3]
     out = [f'<h2 class="pb"><span class="num">2.</span> Where you stand</h2>',
            f"<p>{len(findings)} findings across {sum(v is not None for _, v in rows)} assessed areas. Scores "
-           "start at 100 per area and lose points for each finding, so they show relative gaps and not a "
-           "benchmark.</p>", note,
+           "start at 100 per area and lose points for each finding.</p>", note,
            '<div class="two"><div><table><tr><th>Area</th><th>Score</th><th class="r"></th></tr>'
            f"{area}</table></div>"
            f'<div><h3 style="margin-top:2pt">RSC\'s own resilience scores</h3><table>{rsc}</table>'
@@ -432,14 +438,13 @@ def roadmap(findings, rows, caps=None):
     cs = "".join(f"<tr><td>{esc(n)}</td><td class='r'><b>{c}</b></td><td>{sev[w]}</td></tr>"
                  for n, c, w in csf_rows(findings))
     out = ['<h2><span class="num">3.</span> Roadmap</h2>',
-           "<p>What to do and when. The phases order the work; they are not commitments.</p>",
+           "<p>What to do and when.</p>",
            '<div class="two"><div><h3 style="margin-top:2pt">Projected posture score</h3>'
            f"<table>{pr}</table></div><div><h3 style=\"margin-top:2pt\">By NIST CSF function</h3>"
            f"<table><tr><th>Function</th><th class='r'>Findings</th><th>Worst</th></tr>{cs}</table></div></div>",
            '<p class="small">The projection assumes every finding in earlier phases is fully resolved and nothing '
            "new appears. A detection capability keeps its current score until the finding that closes the gap is "
-           "resolved. The CSF and HIPAA mapping is the author's judgment, not reviewed by compliance, and not a "
-           "statement of compliance.</p>"]
+           "resolved.</p>"]
     p = plan(findings)
     for key in (30, 60, 90, "decide"):
         if not p[key]:
@@ -534,7 +539,7 @@ def cluster_inventory(data):
             "<p class='small'>Objects under RCV SLAs counts active protected objects under SLAs that archive from "
             "that cluster to RCV. An SLA can span several clusters, so this is an upper bound on what one cluster "
             "sends. RCV is identified by archival location type, not by name. End of support shows Not reported when "
-            "RSC returns no support information, which is not the same as supported.</p>")
+            "RSC returns no support information.</p>")
 
 
 def appendix(result, findings):

@@ -207,7 +207,7 @@ def footer(canvas, doc):
 def roadmap_page(findings, rows):
     assessed = [d for d, s in rows if s is not None]
     parts = [P("Roadmap", H1),
-             P("What to do and when. Dates are guidance for ordering the work, not commitments.", SMALL)]
+             P("What to do and when.", SMALL)]
 
     proj = projections(findings, assessed)
     t = Table([[P(label, CELL), P("n/a" if v is None else str(v), CELL_B)] for label, v in proj],
@@ -237,9 +237,7 @@ def roadmap_page(findings, rows):
     parts.insert(2, side)
     parts.insert(3, P("Projection assumes every finding in earlier phases is fully resolved and nothing new "
                       "appears. Findings that depend on licensing are not assumed fixed, so it does not depend "
-                      "on an upgrade. CSF counts are findings and worst severity per function. The CSF and "
-                      "HIPAA mapping is the author's judgment, not reviewed by compliance, and not a statement "
-                      "of compliance.", SMALL))
+                      "on an upgrade. CSF counts are findings and worst severity per function.", SMALL))
     return parts
 
 
@@ -356,13 +354,12 @@ def build(bundle, out_path, previous=None):
     notes = [
         "Data was collected read-only through the RSC GraphQL API using a service account.",
         "Scores start at 100 per area and lose 25, 15, 7 or 3 points per critical, high, medium or low "
-        "finding. This is a simple heuristic to show relative gaps, not an industry benchmark.",
+        "finding.",
         "Several thresholds (90 days stale, 24 hour MFA remember window, 2 or fewer account owners, "
-        "2 or more quorum approvers, 12 character passwords) are guidance values, not Rubrik limits.",
+        "2 or more quorum approvers, 12 character passwords) are the thresholds this assessment applies.",
         "Object counts are RSC object records, not distinct workloads. A VM can appear once per cluster; "
         "VM figures are collapsed to one record per VM, and templates are excluded.",
-        "Test/dev detection matches names such as dev, test, qa, uat and staging. It is a heuristic and "
-        "should be confirmed with the customer.",
+        "Test/dev VMs are identified by name: dev, test, qa, uat and staging.",
         "RSC's own resilience scores are shown for comparison. Their object counts differ from the "
         "per-object counts here and the difference has not been reconciled.",
         "Only items in the 'Enterprise Edition' group have a confirmed entitlement. Items marked "

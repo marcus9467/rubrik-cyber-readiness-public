@@ -77,6 +77,23 @@ def test_hunt_note_is_absent_when_hunt_history_is_unknown():
     assert "Threat hunting (not scored)" not in html
 
 
+def test_card_score_matches_the_area_table_and_explains_a_lower_area_score():
+    b = bundle()
+    for m in b["data"]["dhrc"]["scores"]["SENSITIVE_DATA"]["metrics"]:
+        if m["metric"] == "OPEN_ACCESS_SENSITIVE_FILES":
+            m.update(value=4, maxValue=10)
+    html, result = build_html(b)
+    area = result["domain_scores"]["Sensitive Data Discovery"]
+    assert result["capabilities"]["Sensitive Data Discovery"]["score"] == 100 and area < 100
+    assert f'<div class="sc">{area}<small> / 100</small>' in html
+    assert f"Coverage is 100 of 100. The area score is lower because of open findings in this area: T-2." in html
+
+
+def test_card_has_no_explanation_when_the_area_score_equals_coverage():
+    html, _ = build_html(bundle())
+    assert "The area score is lower" not in html
+
+
 def test_blind_card_shows_its_reason_and_active_cards_do_not():
     b = bundle()
     b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")

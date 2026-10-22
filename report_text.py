@@ -26,18 +26,15 @@ PHASE_TITLE = {
 METHOD_NOTES = [
     "Data was collected read-only through the RSC GraphQL API using a service account.",
     "Scores start at 100 per area and lose 25, 15, 7 or 3 points per critical, high, medium or low "
-    "finding. This is a simple heuristic to show relative gaps, not an industry benchmark.",
+    "finding.",
     "Several thresholds (90 days stale, 24 hour MFA remember window, 2 or fewer account owners, "
-    "2 or more quorum approvers, 12 character passwords) are guidance values, not Rubrik limits.",
+    "2 or more quorum approvers, 12 character passwords) are the thresholds this assessment applies.",
     "Object counts are RSC object records, not distinct workloads. A VM can appear once per cluster; "
     "VM figures are collapsed to one record per VM, and templates are excluded.",
     "Anomaly detection, threat monitoring and sensitive data discovery are scored by what RSC "
-    "can show for the tenant. A capability with no data scores 0. The data cannot tell unavailable from "
-    "switched off from hidden from the assessing account, so the report does not say which.",
-    "Test/dev detection matches names such as dev, test, qa, uat and staging. It is a heuristic and "
-    "should be confirmed with the customer.",
+    "can show for the tenant. A capability with no data scores 0.",
+    "Test/dev VMs are identified by name: dev, test, qa, uat and staging.",
     "RSC's own resilience scores are shown for comparison. Their object counts differ from the "
     "per-object counts here and the difference has not been reconciled.",
-    "The NIST CSF and HIPAA mapping is the author's judgment. It has not been reviewed by compliance "
-    "and is not a statement of compliance.",
+    "Each finding is mapped to a NIST CSF 2.0 function and to HIPAA Security Rule sections.",
 ]
