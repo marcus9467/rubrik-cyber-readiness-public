@@ -884,7 +884,7 @@ query Offsite($after: String) {
         baseFrequency { duration unit }
         archivalSpecs {
           isComplianceImmutabilityEnabled
-          archivalLocationToClusterMapping { location { name targetType } }
+          archivalLocationToClusterMapping { cluster { id } location { name targetType } }
         }
         replicationSpecsV2 { cluster { name } targetMapping { targetType } }
       }
@@ -914,6 +914,7 @@ query Offsite($after: String) {
         $archive = @(foreach ($a in (Get-List $s.archivalSpecs)) {
                 foreach ($m in (Get-List $a.archivalLocationToClusterMapping)) {
                     [ordered]@{ name = $m.location.name; type = $m.location.targetType
+                        clusterId = $m.cluster.id
                         immutable = [bool]$a.isComplianceImmutabilityEnabled
                     }
                 }
@@ -1304,7 +1305,11 @@ function Protect-Bundle($Bundle) {
     # Offsite: SLA, archive location and replication cluster names. Scoring reads only the counts.
     foreach ($s in (Get-List (Get-Prop (& $sect 'offsite') 'slas'))) {
         Protect-Field $ps $s 'name' 'sla'
-        foreach ($t in (Get-List (Get-Prop $s 'archiveTargets'))) { Protect-Field $ps $t 'name' 'archive' }
+        foreach ($t in (Get-List (Get-Prop $s 'archiveTargets'))) {
+            Protect-Field $ps $t 'name' 'archive'
+            # Same pseudonym as the clusters section, so the report can still join a cluster to its archive.
+            if (Test-Prop $t 'clusterId') { Protect-Field $ps $t 'clusterId' 'cluster' }
+        }
         foreach ($t in (Get-List (Get-Prop $s 'replicationTargets'))) { Protect-Field $ps $t 'cluster' 'cluster' }
     }
 
@@ -1339,15 +1344,22 @@ function Protect-Bundle($Bundle) {
         Set-Prop $v 'signals' $pairs.ToArray()
     }
 
-    # Threat monitoring roots (cloud account / subscription names and ids)
+    # Threat monitoring roots (cloud account / subscription names and ids).
+    # CDM_CLUSTER items are clusters, so they share pseudonyms with the clusters section. Clusters RSC could not
+    # read (notAssessed) carry the same names and ids. Keep in step with redact.py.
     $roots = Get-Prop (& $sect 'threat') 'roots'
     if (Test-IsMap $roots) {
         foreach ($rn in (Get-PropNames $roots)) {
             $root = Get-Prop $roots $rn
             if (-not (Test-IsMap $root)) { continue }
-            foreach ($i in (Get-List (Get-Prop $root 'items'))) {
-                Protect-Field $ps $i 'id' 'acct'
-                Protect-Field $ps $i 'name' 'acct'
+            $kind = if ($rn -eq 'CDM_CLUSTER') { 'cluster' } else { 'acct' }
+            # Two loops, not one concatenated list: a function that returns one dictionary unrolls it, and
+            # adding two dictionaries merges them instead of building a list.
+            foreach ($key in 'items', 'notAssessed') {
+                foreach ($i in (Get-List (Get-Prop $root $key))) {
+                    Protect-Field $ps $i 'id' $kind
+                    Protect-Field $ps $i 'name' $kind
+                }
             }
         }
     }

@@ -117,6 +117,9 @@ def redact_bundle(bundle):
         s["name"] = ps("sla", s.get("name"))
         for t in s.get("archiveTargets", []) or []:
             t["name"] = ps("archive", t.get("name"))
+            # Same pseudonym as the clusters section, so the report can still join a cluster to its archive.
+            if "clusterId" in t:
+                t["clusterId"] = ps("cluster", t.get("clusterId"))
         for t in s.get("replicationTargets", []) or []:
             t["cluster"] = ps("cluster", t.get("cluster"))
 

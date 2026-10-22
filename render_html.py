@@ -19,6 +19,7 @@ from pathlib import Path
 
 import brand
 import capabilities
+import inventory_report
 from delta import compute as compute_delta, describe_change
 from frameworks import CSF_NAMES
 from posture import DOMAIN_SOURCES, domain_rows, overall
@@ -449,6 +450,59 @@ def progress(d):
     return "".join(out)
 
 
+def estate_summary(data):
+    """One callout for the scorecard page: cluster count, versions and how many clusters archive to RCV."""
+    s = inventory_report.summary(data)
+    if not s:
+        return ""
+    vers = ", ".join(f"{v} ({n})" for v, n in sorted(s["versions"].items(), reverse=True))
+    if s["rcvKnown"]:
+        rcv = (f"{s['toRcv']} of {s['clusters']} clusters archive to Rubrik Cloud Vault and "
+               f"{s['notToRcv']} do not.")
+    else:
+        rcv = ("Whether each cluster archives to Rubrik Cloud Vault is not known, because this data was collected "
+               "before cluster ids were recorded on archive targets.")
+    eos = (f" End-of-support status was not reported for {s['eosUnknown']} of them." if s["eosUnknown"] else "")
+    return (f'<div class="callout"><b>Your estate:</b> {s["clusters"]} clusters ({s["connected"]} connected). '
+            f"Software versions: {esc(vers)}. {rcv}{eos} The full list is in the appendix.</div>")
+
+
+def cluster_inventory(data):
+    """Appendix table: every cluster with version, status, end-of-support and RCV."""
+    rows = inventory_report.cluster_rows(data)
+    if not rows:
+        return ""
+    known = inventory_report.rcv_known(data)
+
+    def rcv_cell(r):
+        if not known:
+            return "Not known"
+        return f"Yes, {r['rcvSlas']} SLA{'s' if r['rcvSlas'] != 1 else ''}" if r["toRcv"] else "No"
+
+    def eos_cell(r):
+        e = r["eos"]
+        date = f"<br><span class='small nowrap'>{esc(e['date'])}</span>" if e["date"] else ""
+        return esc(e["label"]) + date
+
+    def objects_cell(r):
+        return format(r["objectsUnderRcvSlas"], ",") if known else "n/a"
+
+    body = "".join(
+        f"<tr><td>{esc(r['name'] or r['id'])}</td><td class='mono small'>{esc(r['version'] or 'unknown')}</td>"
+        f"<td>{esc(r['status'] or 'unknown')}</td><td>{eos_cell(r)}</td><td>{esc(rcv_cell(r))}</td>"
+        f"<td class='r'>{objects_cell(r)}</td></tr>"
+        for r in rows)
+    return ('<h2 class="pb">Appendix. Cluster inventory</h2>'
+            "<p>Every Rubrik cluster RSC reports, with its software version and whether it archives to Rubrik Cloud "
+            "Vault (RCV).</p>"
+            "<table><tr><th>Cluster</th><th>Version</th><th>Status</th><th>End of support</th><th>Archives to RCV</th>"
+            f"<th class='r'>Objects under RCV SLAs</th></tr>{body}</table>"
+            "<p class='small'>Objects under RCV SLAs counts active protected objects under SLAs that archive from "
+            "that cluster to RCV. An SLA can span several clusters, so this is an upper bound on what one cluster "
+            "sends. RCV is identified by archival location type, not by name. End of support shows Not reported when "
+            "RSC returns no support information, which is not the same as supported.</p>")
+
+
 def appendix(result, findings):
     out = ['<h2 class="pb">Appendix. Technical findings</h2>',
            "<p>Every finding with its evidence and recommended action, grouped by area.</p>"]
@@ -478,9 +532,11 @@ def build_html(bundle, previous=None):
     caps = result.get("capabilities")
     proj = projections(findings, [d for d, v in rows if v is not None], caps)
     body = [cover(result, rows, ov, findings, proj, collected), prepared_for(result),
-            where_you_stand(result, rows, findings), do_first(findings), roadmap(findings, rows, caps)]
+            where_you_stand(result, rows, findings) + estate_summary(bundle["data"]),
+            do_first(findings), roadmap(findings, rows, caps)]
     if previous is not None:
         body.append(progress(compute_delta(previous, bundle)))
+    body.append(cluster_inventory(bundle["data"]))
     body.append(appendix(result, findings))
     title = f"Cyber Readiness Assessment - {result['customer']}"
     html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{esc(title)}</title>"

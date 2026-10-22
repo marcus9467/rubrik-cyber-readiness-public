@@ -54,7 +54,7 @@ Twelve collectors read the tenant. They feed 14 scored areas and four detection 
 | `detection` | Anomaly alert settings, threat hunt history, webhooks and event/audit forwarding |
 | `dhrc` | RSC's own Data Health / Resilience Cockpit scores, used to cross-check this report's counts |
 | `recovery` | Recovery plans: status, type, last run outcome, schedule |
-| `offsite` | Which SLA domains replicate to another cluster or archive to cloud, and whether archives are immutable |
+| `offsite` | Which SLA domains replicate to another cluster or archive to cloud, which cluster each archive target belongs to, and whether archives are immutable |
 
 Scored areas: Identity, MFA, Quorum, Access, RBAC, Immutability, Coverage, Platform, Anomaly Detection,
 Threat Monitoring, Threat Hunting, Sensitive Data Discovery, Alerting, Recovery.
@@ -331,7 +331,22 @@ detection work from names, so the redacted bundle carries the same classificatio
 | **1. Are you prepared?** | The four detection capabilities, each scored by what RSC actually shows for the tenant. A capability with no data scores zero. |
 | **2. Where you stand** | Scores by area, RSC's own resilience scores alongside, and the priority findings with a fix-now / process grouping |
 | **3. Roadmap** | Projected score, NIST CSF view, and the 30/60/90 day plan |
+| **Appendix. Cluster inventory** | Every cluster with its software version, status, end-of-support state, and whether it archives to Rubrik Cloud Vault (RCV). A one-line summary also sits under "Where you stand". |
 | **Appendix** | Every finding with evidence, steps, documentation links and framework tags, then the method and its limits |
+
+### Reading the cluster inventory
+
+- **RCV is identified by archival location type** (`RCS_AZURE`, `RCV_AWS`, `RCV_GCP`), never by name. RSC reports
+  RCV on Azure as `RCS_AZURE`. Names are pseudonymized in a redacted bundle, so a name test would find nothing.
+- **"Objects under RCV SLAs" is an upper bound.** The archive mapping is per cluster but the object count is per
+  SLA. An SLA that spans several clusters counts all its objects against each cluster that archives it to RCV. Use
+  the number to rank clusters, and confirm the exact figure in RSC before quoting it.
+- **"Not known" is not "No".** Bundles collected before cluster ids were recorded on archive targets cannot say
+  which cluster archives where. The report shows "Not known" and "n/a" for those, and the summary line says why.
+  Re-collect to get the answer.
+- **"Not reported" end of support is not "Supported".** RSC returns `EOS_STATUS_UNKNOWN` for most clusters on the
+  tenants tested. The four values RSC can return are Supported, Plan upgrade, Out of support and Unknown.
+- **Versions are shown whole** (for example `9.6.1-p1-33607`) and grouped by base version in the summary.
 
 ### How scoring works
 
@@ -568,8 +583,12 @@ python3 tests/run_tests.py
 after), delta logic, roadmap, edition grouping, framework tags, Tier-0 detection, HTML rendering and Chrome
 printing.
 
-PowerShell parity check (needs `pwsh`; not part of `run_tests.py`). Run the mock RSC, collect with both
-collectors, and diff the bundles:
+The customer runs the PowerShell redactor, so a name that survives there leaks in the one file they send.
+`tests/test_powershell_redaction.py` runs the real script against the mock and fails if any real cluster, SLA,
+archive or user name is left in the redacted bundle. It is part of `run_tests.py` and skips itself when `pwsh` is
+not installed, so on a machine without it the check silently does not run.
+
+Full PowerShell parity check (needs `pwsh`). Run the mock RSC, collect with both collectors, and diff the bundles:
 
 ```
 python3 tests/mock_rsc.py 18080 &

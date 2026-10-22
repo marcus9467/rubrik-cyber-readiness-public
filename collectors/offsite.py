@@ -21,7 +21,7 @@ query Offsite($after: String) {
         baseFrequency { duration unit }
         archivalSpecs {
           isComplianceImmutabilityEnabled
-          archivalLocationToClusterMapping { location { name targetType } }
+          archivalLocationToClusterMapping { cluster { id } location { name targetType } }
         }
         replicationSpecsV2 { cluster { name } targetMapping { targetType } }
       }
@@ -43,6 +43,7 @@ def _archive_targets(specs):
         for m in a.get("archivalLocationToClusterMapping") or []:
             loc = m.get("location") or {}
             out.append({"name": loc.get("name"), "type": loc.get("targetType"),
+                        "clusterId": (m.get("cluster") or {}).get("id"),
                         "immutable": bool(a.get("isComplianceImmutabilityEnabled"))})
     return out
 
