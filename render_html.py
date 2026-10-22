@@ -271,12 +271,12 @@ def cover(result, rows, ov, findings, proj, collected):
                 f"{c['low']} low"),
            stat("Capabilities blind", sum(1 for c in (result.get("capabilities") or {}).values()
                                           if c["score"] == 0),
-                "of 4 detection capabilities returned no data",
+                f"of {len(result.get('capabilities') or {})} detection capabilities returned no data",
                 RED if any(c["score"] == 0 for c in (result.get("capabilities") or {}).values()) else TEAL),
            stat("Score after 30 days", "n/a" if d30 is None else d30, "if the 30 day items are resolved"),
            "</div>",
            "<h2>How this document is organized</h2>",
-           "<p><b>Section 1.</b> Are you prepared: the four detection capabilities that decide whether you "
+           "<p><b>Section 1.</b> Are you prepared: the detection capabilities that decide whether you "
            "can see an attack, size it and recover cleanly.</p>",
            "<p><b>Section 2.</b> Where you stand: scores by area, the findings that matter most, and what to "
            "do first.</p>",
@@ -307,12 +307,12 @@ def prepared_for(result):
                     "the estate.</b> Anything outside that coverage is invisible to the team during an "
                     "incident.</div>")
     else:
-        headline = ("<div class='callout'><b>All four detection capabilities are active.</b> Coverage is complete "
-                    "everywhere RSC reports on it.</div>")
+        headline = (f"<div class='callout'><b>All {len(live)} assessed detection capabilities are active.</b> "
+                    "Coverage is complete everywhere RSC reports on it.</div>")
     cards = []
     for dom in capabilities.DOMAINS:
-        c = caps[dom]
-        if c["score"] is None:
+        c = caps.get(dom)
+        if c is None or c["score"] is None:
             continue
         col = colour[c["state"]]
         ok = c["state"] == "active"
@@ -326,10 +326,15 @@ def prepared_for(result):
     note = ""
     if any(c["state"] == "blind" for c in caps.values()):
         note = f'<p class="small">{esc(capabilities.BLIND_NOTE)}</p>'
-    return ('<h2 class="pb"><span class="num">1.</span> Are you prepared?</h2>'
-            "<p>Four capabilities decide whether your team can see an attack, size it and recover from it cleanly. "
-            "Each is scored by what RSC can actually show for your tenant. A capability with no data scores zero.</p>"
-            f'{headline}<div class="caps">{"".join(cards)}</div>{note}')
+    skipped = result.get("not_licensed") or []
+    skip_note = ""
+    if skipped:
+        skip_note = '<p class="small">Not assessed, not part of this licence: ' + esc(", ".join(skipped)) + ".</p>"
+    intro = (f"<p>{len(caps)} capabilities decide whether your team can see an attack, size it and recover from "
+             "it cleanly. Each is scored by what RSC can actually show for your tenant. A capability with no "
+             "data scores zero.</p>")
+    card_html = '<div class="caps">' + "".join(cards) + "</div>"
+    return '<h2 class="pb"><span class="num">1.</span> Are you prepared?</h2>' + intro + headline + card_html + note + skip_note
 
 
 def where_you_stand(result, rows, findings):
@@ -338,13 +343,18 @@ def where_you_stand(result, rows, findings):
               "SENSITIVE_DATA": "Sensitive data"}
     s = result["rsc_scores"]
     area = "".join(f'<tr><td><b>{esc(d)}</b></td><td>{bar(v)}</td><td class="r"><b>'
-                   f'{"n/a" if v is None else v}</b></td></tr>' for d, v in rows)
+                   f'{"n/a" if v is None else v}</b></td></tr>'
+                   for d, v in rows if d not in set(result.get("not_licensed") or []))
     rsc = ("".join(f'<tr><td>{esc(labels[k])}</td><td class="r"><b>{s[k]:g}</b></td></tr>'
                    for k in labels if k in s)
            if s else '<tr><td class="small">Not available on this tenant.</td></tr>')
-    unassessed = [d for d, v in rows if v is None]
+    excluded = set(result.get("not_licensed") or [])
+    unassessed = [d for d, v in rows if v is None and d not in excluded]
     note = (f'<div class="callout"><b>Not assessed:</b> {esc(", ".join(unassessed))}. Data collection failed '
             "for these areas, so they carry no score.</div>") if unassessed else ""
+    if excluded:
+        note += ('<p class="small">Left out of scoring, not part of this licence: '
+                 + esc(", ".join(sorted(excluded))) + ".</p>")
     top = [f for f in findings if f["severity"] in ("critical", "high")][:3] or findings[:3]
     out = [f'<h2 class="pb"><span class="num">2.</span> Where you stand</h2>',
            f"<p>{len(findings)} findings across {sum(v is not None for _, v in rows)} assessed areas. Scores "
@@ -460,7 +470,7 @@ def appendix(result, findings):
 
 
 def build_html(bundle, previous=None):
-    result = score(bundle)
+    result = score(bundle, brand.load()["not_licensed"])
     rows = domain_rows(result, bundle["data"])
     ov = overall(rows)
     findings = result["findings"]

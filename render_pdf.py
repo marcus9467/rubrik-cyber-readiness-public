@@ -281,7 +281,7 @@ def progress_page(d):
 
 
 def build(bundle, out_path, previous=None):
-    result = score(bundle)
+    result = score(bundle, brand.load()["not_licensed"])
     rows = domain_rows(result, bundle["data"])
     ov = overall(rows)
     findings = result["findings"]

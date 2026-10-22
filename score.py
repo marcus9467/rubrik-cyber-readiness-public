@@ -581,9 +581,16 @@ def _offsite(d, rule_id, key, known_key, title, what, fix):
         return None
     share = o[key] / o[known_key]
     sev = "high" if share >= OFFSITE_HIGH else "medium" if share >= OFFSITE_MEDIUM else "low"
+    snap = d.get("inventory", {}).get("reconciliation", {}).get("snappables") or {}
+    extra = (snap.get("relic") or 0) + (snap.get("archived") or 0)
+    note = ""
+    if extra and snap.get("activeProtected"):
+        note = (f" RSC counts every object record under an SLA, including relic and archived records. This "
+                f"tenant has {snap['activeProtected']:,} active protected objects and {extra:,} relic or "
+                f"archived records, so the share among active workloads may differ.")
     return _f(rule_id, "Recovery", sev, title,
-              f"{o[key]} of {o[known_key]} protected object records ({share:.0%}) {what} "
-              f"(object records, not distinct workloads).",
+              f"{o[key]} of {o[known_key]} object records ({share:.0%}) {what} "
+              f"(object records, not distinct workloads).{note}",
               fix, "fix_now")
 
 
@@ -653,7 +660,14 @@ RULES = [
 ]
 
 
-def score(bundle):
+# Rules that belong to one detection capability. A capability the customer is not licensed for is left out entirely.
+CAPABILITY_RULES = {"Threat Monitoring": {"V-2", "T-1"}, "Anomaly Detection": {"V-1", "T-3"},
+                    "Threat Hunting": {"V-3"}, "Sensitive Data Discovery": {"V-4", "T-2"}}
+
+
+def score(bundle, not_licensed=()):
+    """not_licensed: capability names (see capabilities.DOMAINS) to leave out of findings, scores and the cards."""
+    not_licensed = {n for n in not_licensed if n in CAPABILITY_RULES}
     data = dict(bundle["data"])
     data["_status"] = bundle["status"]  # the capability rules need to tell "collector failed" from "never ran"
     findings, skipped = [], []
@@ -664,6 +678,8 @@ def score(bundle):
                 findings.append(f)
         except Exception as e:  # a rule must never sink the report
             skipped.append({"rule": rule.__name__, "error": str(e)[:200]})
+    drop = set().union(*(CAPABILITY_RULES[n] for n in not_licensed)) if not_licensed else set()
+    findings = [f for f in findings if f["id"] not in drop]
     findings.sort(key=lambda f: (SEVERITY_ORDER.index(f["severity"]), f["id"]))
 
     domains = {}
@@ -673,6 +689,9 @@ def score(bundle):
     # The four detection capabilities are scored by what the tenant can see, and a capability with no data is a 0,
     # not an unscored gap. Findings in the same area can only pull the score lower.
     caps = capabilities.compute(data, bundle["status"])
+    for n in not_licensed:
+        caps.pop(n, None)
+        scores.pop(n, None)
     for dom, c in caps.items():
         if c["score"] is not None:
             scores[dom] = min(c["score"], scores.get(dom, 100))
@@ -686,6 +705,7 @@ def score(bundle):
         "capabilities": caps,
         "counts": {s: sum(f["severity"] == s for f in findings) for s in SEVERITY_ORDER},
         "skipped_rules": skipped,
+        "not_licensed": sorted(not_licensed),
         "rsc_scores": {k: v["value"] for k, v in data.get("dhrc", {}).get("scores", {}).items()},
     }
 
