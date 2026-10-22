@@ -25,6 +25,32 @@ def test_every_finding_id_appears_in_the_html():
         assert f["id"] in html, f["id"]
 
 
+def test_capability_tile_names_what_is_missing_and_separates_off_from_blind():
+    b = bundle()
+    b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")          # blind: RSC does not report it
+    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}  # off: reported, never run
+    html, _ = build_html(b)
+    assert "2 of 4" in html
+    assert "No data: Sensitive Data Discovery" in html
+    assert "Off: Threat Hunting" in html
+    assert "detection capabilities returned no data" not in html  # the old tile counted off as no data
+
+
+def test_blind_card_shows_its_reason_and_active_cards_do_not():
+    b = bundle()
+    b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    html, _ = build_html(b)
+    assert html.count("Why no data:") == 1
+    assert "RSC does not report this capability for the tenant." in html
+    assert "hidden from the account" not in html
+
+
+def test_tile_for_a_fully_active_tenant():
+    html, result = build_html(bundle())
+    assert all(c["state"] == "active" for c in result["capabilities"].values())
+    assert "4 of 4" in html and "all fully covered" in html
+
+
 def test_untrusted_text_is_escaped():
     b = bundle()
     b["data"]["inventory"]["unprotected"]["rows"] = [

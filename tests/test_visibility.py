@@ -44,6 +44,33 @@ def test_failed_collector_is_a_zero_not_a_grey_blank():
     assert find(b, "V-2")["severity"] == "critical"
 
 
+def test_every_blind_path_says_why():
+    from capabilities import NOT_REPORTED, NOTHING_LISTED
+    b = bundle()
+    b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    assert score(b)["capabilities"]["Sensitive Data Discovery"]["reason"] == NOT_REPORTED
+    b = bundle()
+    b["status"]["dhrc"] = "error: denied"
+    assert "cluster health query failed" in score(b)["capabilities"]["Anomaly Detection"]["reason"]
+    b = bundle()
+    b["status"]["threat"] = "error: denied"
+    assert "threat monitoring query failed" in score(b)["capabilities"]["Threat Monitoring"]["reason"]
+    b = bundle()
+    b["data"]["threat"] = {"roots": {}, "objects": None}
+    assert score(b)["capabilities"]["Threat Monitoring"]["reason"] == NOTHING_LISTED
+    b = bundle()
+    b["data"]["detection"]["hunts"] = {"error": "denied"}
+    assert "hunt history query failed" in score(b)["capabilities"]["Threat Hunting"]["reason"]
+
+
+def test_reason_is_empty_unless_blind_and_never_quotes_the_api():
+    b = bundle()
+    b["data"]["detection"]["hunts"] = {"error": "HTTP 403 host vcenter.acme.example denied"}
+    caps = score(b)["capabilities"]
+    assert "acme" not in caps["Threat Hunting"]["reason"]
+    assert all(c["reason"] == "" for c in caps.values() if c["state"] != "blind")
+
+
 def test_hunt_failure_does_not_grey_out_alerting():
     b = bundle()
     b["data"]["detection"]["hunts"] = {"error": "denied"}

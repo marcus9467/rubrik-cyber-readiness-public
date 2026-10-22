@@ -657,7 +657,7 @@ def _visibility(d, domain, rule_id, remediation):
     dark = c["state"] in ("blind", "off")
     title = capabilities.GAP_TITLE[domain][0 if dark else 1]
     sev = "critical" if dark else "high" if (c["share"] or 0) < 0.5 else "medium"
-    return _f(rule_id, domain, sev, title, f"{c['evidence']} {capabilities.CONSEQUENCE[domain]}",
+    return _f(rule_id, domain, sev, title, f"{c['evidence']} {capabilities.consequence(domain, c['state'])}",
               remediation, "visibility")
 
 

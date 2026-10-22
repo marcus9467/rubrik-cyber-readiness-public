@@ -85,8 +85,16 @@ def test_threat_monitoring_combines_accounts_and_objects_and_caps_over_100():
              "CDM_CLUSTER": {"total": 4, "threatMonitoringEnabled": 2}}
     c = compute(data(roots=roots, objects={"enabledObjects": 3018, "supportedObjects": 2808}), OK)["Threat Monitoring"]
     assert c["state"] == "partial" and c["score"] == 75  # (4 of 8 roots = 0.5, + 1.0 objects) / 2
-    assert "4 of 8 clusters, cloud accounts and SaaS accounts" in c["evidence"]
+    assert "2 of 4 Rubrik clusters; 2 of 4 cloud and SaaS accounts" in c["evidence"]
     assert "more enabled than supported" in c["evidence"]
+
+
+def test_partial_state_gets_its_own_consequence_and_off_keeps_the_full_one():
+    from capabilities import CONSEQUENCE, consequence
+    for dom in CONSEQUENCE:
+        assert consequence(dom, "partial") != consequence(dom, "off")
+        assert consequence(dom, "off") == consequence(dom, "blind") == CONSEQUENCE[dom]
+    assert "outside the covered" in consequence("Threat Monitoring", "partial")
 
 
 def test_threat_monitoring_counts_cdm_clusters_and_leaves_out_unreadable_ones():
