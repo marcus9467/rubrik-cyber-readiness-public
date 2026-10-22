@@ -208,6 +208,19 @@ def stat(label, big, sub, color=INK):
             f'<div class="big" style="color:{color}">{esc(str(big))}</div><div class="sub">{esc(sub)}</div></div>')
 
 
+def capability_stat(caps):
+    """Summary tile: how many capabilities are fully covered, and which ones are not, so it ties to Section 1."""
+    groups = capabilities.summary(caps)
+    live = sum(len(v) for v in groups.values())
+    if not live:
+        return stat("Detection capabilities", "n/a", "none assessed")
+    gaps = [(label, groups[k]) for k, label in (("blind", "No data"), ("off", "Off"), ("partial", "Partial"))
+            if groups[k]]
+    sub = "; ".join(f"{label}: {', '.join(names)}" for label, names in gaps) or "all fully covered"
+    colour = RED if groups["blind"] or groups["off"] else AMBER if groups["partial"] else TEAL
+    return stat("Detection capabilities fully active", f"{len(groups['active'])} of {live}", sub, colour)
+
+
 def bar(v):
     if v is None:
         return '<span class="small">not assessed</span>'
@@ -270,10 +283,7 @@ def cover(result, rows, ov, findings, proj, collected):
                 grade_color(ov)),
            stat("Findings", len(findings), f"{c['critical']} critical, {c['high']} high, {c['medium']} medium, "
                 f"{c['low']} low"),
-           stat("Capabilities blind", sum(1 for c in (result.get("capabilities") or {}).values()
-                                          if c["score"] == 0),
-                f"of {len(result.get('capabilities') or {})} detection capabilities returned no data",
-                RED if any(c["score"] == 0 for c in (result.get("capabilities") or {}).values()) else TEAL),
+           capability_stat(result.get("capabilities") or {}),
            stat("Score after 30 days", "n/a" if d30 is None else d30, "if the 30 day items are resolved"),
            "</div>",
            "<h2>How this document is organized</h2>",
@@ -323,7 +333,8 @@ def prepared_for(result):
             f'<div class="sc">{c["score"]}<small> / 100</small></div>'
             f'<div class="q">Are you prepared for</div><div class="pf">{esc(capabilities.PREPARED_FOR[dom])}?</div>'
             f'<p class="ev">{esc(c["evidence"])}</p>'
-            + ("" if ok else f'<p class="cons">{esc(capabilities.CONSEQUENCE[dom])}</p>') + "</div>")
+            + (f'<p class="ev"><b>Why no data:</b> {esc(c["reason"])}</p>' if c.get("reason") else "")
+            + ("" if ok else f'<p class="cons">{esc(capabilities.consequence(dom, c["state"]))}</p>') + "</div>")
     note = ""
     if any(c["state"] == "blind" for c in caps.values()):
         note = f'<p class="small">{esc(capabilities.BLIND_NOTE)}</p>'

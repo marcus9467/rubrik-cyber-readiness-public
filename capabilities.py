@@ -48,6 +48,25 @@ CONSEQUENCE = {
     "Sensitive Data Discovery": "Nobody can say where regulated data lives or who can open it, so after a breach "
                                 "the exposure cannot be sized.",
 }
+# Shown instead of CONSEQUENCE when the capability is on for part of the estate. The full line says the capability
+# is absent, which contradicts the evidence printed above it.
+PARTIAL_CONSEQUENCE = {
+    "Anomaly Detection": "Backups outside the covered clusters are not watched for abnormal change, so an attack "
+                         "there can run unnoticed.",
+    "Threat Monitoring": "Backups outside the covered clusters and accounts are not scanned for known malicious "
+                         "indicators, so a restore point from there can carry the attacker straight back in.",
+    "Threat Hunting": "Your team has not run a hunt recently, so the first search in a real incident will be "
+                      "unpractised.",
+    "Sensitive Data Discovery": "Regulated data outside the covered clusters is not classified, so after a breach "
+                                "the exposure there cannot be sized.",
+}
+
+
+def consequence(domain, state):
+    """The one-line business consequence. Partial coverage gets its own wording; off and blind get the full line."""
+    return (PARTIAL_CONSEQUENCE if state == "partial" else CONSEQUENCE)[domain]
+
+
 GAP_TITLE = {
     "Anomaly Detection": ("No visibility into ransomware activity in backup data",
                           "Ransomware detection covers only part of the estate"),
@@ -58,8 +77,9 @@ GAP_TITLE = {
     "Sensitive Data Discovery": ("No visibility into where sensitive data lives",
                                  "Sensitive data discovery covers only part of the estate"),
 }
-BLIND_NOTE = ("RSC returned no data for this. It is unavailable, switched off, or hidden from the account that "
-              "ran the assessment; the customer's administrator can confirm which.")
+BLIND_NOTE = ("A capability marked No data returned scores zero: this assessment could not see it, which is not "
+              "the same as it being off. The reason is shown on the card. The customer's administrator can "
+              "confirm the actual state in RSC.")
 
 
 def _is_stub(x):
@@ -74,12 +94,29 @@ def _section(data, status, status_key):
     return "ok" if status_key in data else "missing"
 
 
-def _result(domain, state, share, evidence):
+def _result(domain, state, share, evidence, reason=""):
+    """reason: fixed text saying why a blind capability is blind. Never built from API text, so redaction cannot
+    change it."""
     score = {"active": 100, "off": 0, "blind": 0, "not_collected": None}.get(state)
     if state == "partial":
         score = max(1, min(99, round((share or 0) * 100)))
     return {"domain": domain, "rule": RULE_IDS[domain], "state": state, "score": score, "share": share,
-            "evidence": evidence}
+            "evidence": evidence, "reason": reason}
+
+
+QUERY_FAILED = "The {} query failed, so RSC's answer is unknown."
+NOT_REPORTED = "RSC does not report this capability for the tenant."
+NOTHING_LISTED = "RSC lists no cluster, account or object for it."
+
+
+def summary(caps):
+    """Capabilities grouped by state, in display order, for the summary tile. not_collected ones are left out."""
+    groups = {"active": [], "partial": [], "off": [], "blind": []}
+    for dom in DOMAINS:
+        c = caps.get(dom)
+        if c is not None and c["state"] in groups:
+            groups[c["state"]].append(dom)
+    return groups
 
 
 def _classify(share):
@@ -96,10 +133,11 @@ def _cluster_capability(domain, data, status, score_key, metric, what):
     if st == "missing":
         return _result(domain, "not_collected", None, "")
     if st == "error" or _is_stub(data.get("dhrc")):
-        return _result(domain, "blind", None, f"RSC returned no {what} data.")
+        return _result(domain, "blind", None, f"RSC returned no {what} data.",
+                       QUERY_FAILED.format("cluster health"))
     m = _metric(data, score_key, metric)
     if not m:
-        return _result(domain, "blind", None, f"RSC reports no {what} data for this tenant.")
+        return _result(domain, "blind", None, f"RSC reports no {what} data for this tenant.", NOT_REPORTED)
     if not m.get("maxValue"):
         # The metric counts clusters. A tenant with none (cloud or SaaS only) has nothing to measure here, which is
         # not the same as being blind, so it stays unscored rather than showing a false zero.
@@ -127,16 +165,25 @@ def monitoring(data, status):
         return _result(dom, "not_collected", None, "")
     threat = data.get("threat")
     if st == "error" or not isinstance(threat, dict) or _is_stub(threat):
-        return _result(dom, "blind", None, "RSC returned no threat monitoring data.")
+        return _result(dom, "blind", None, "RSC returned no threat monitoring data.",
+                       QUERY_FAILED.format("threat monitoring"))
     shares, parts = [], []
     # Same roots as rule T-1: Rubrik clusters plus cloud and SaaS accounts. Clusters RSC could not read are not in
     # the total (see notAssessed), so a disconnected cluster is neither credited nor counted as off.
-    roots = [r for r in (threat.get("roots") or {}).values()
-             if isinstance(r, dict) and not _is_stub(r) and r.get("total")]
+    named = {n: r for n, r in (threat.get("roots") or {}).items()
+             if isinstance(r, dict) and not _is_stub(r) and r.get("total")}
+    roots = list(named.values())
     if roots:
+        # One share for the score, but the evidence reports clusters and accounts separately.
         en, tot = sum(r["threatMonitoringEnabled"] for r in roots), sum(r["total"] for r in roots)
         shares.append(min(1.0, en / tot))
-        parts.append(f"{en} of {tot} clusters, cloud accounts and SaaS accounts")
+        cdm = named.get("CDM_CLUSTER")
+        cloud = [r for n, r in named.items() if n != "CDM_CLUSTER"]
+        if cdm:
+            parts.append(f"{cdm['threatMonitoringEnabled']} of {cdm['total']} Rubrik clusters")
+        if cloud:
+            parts.append(f"{sum(r['threatMonitoringEnabled'] for r in cloud)} of "
+                         f"{sum(r['total'] for r in cloud)} cloud and SaaS accounts")
     objs = threat.get("objects")
     if isinstance(objs, dict) and not _is_stub(objs) and objs.get("supportedObjects"):
         en, sup = objs["enabledObjects"], objs["supportedObjects"]
@@ -145,7 +192,8 @@ def monitoring(data, status):
                      + (" (RSC reports more enabled than supported, so this is counted as complete)"
                         if en > sup else ""))
     if not shares:
-        return _result(dom, "blind", None, "Threat monitoring is not reporting on any account or object.")
+        return _result(dom, "blind", None, "Threat monitoring is not reporting on any account or object.",
+                       NOTHING_LISTED)
     share = sum(shares) / len(shares)
     return _result(dom, _classify(share), share, "Threat monitoring is on for " + "; ".join(parts) + ".")
 
@@ -157,12 +205,14 @@ def hunting(data, status):
         return _result(dom, "not_collected", None, "")
     det = data.get("detection")
     if st == "error" or not isinstance(det, dict):
-        return _result(dom, "blind", None, "RSC returned no threat hunting data.")
+        return _result(dom, "blind", None, "RSC returned no threat hunting data.",
+                       QUERY_FAILED.format("threat hunting"))
     h = det.get("hunts")
     if h is None:
         return _result(dom, "not_collected", None, "")  # collector predates hunt history
     if _is_stub(h):
-        return _result(dom, "blind", None, "RSC returned no threat hunt history.")
+        return _result(dom, "blind", None, "RSC returned no threat hunt history.",
+                       QUERY_FAILED.format("threat hunt history"))
     total, recent, latest = h.get("total") or 0, h.get("last90") or 0, (h.get("latest") or "")[:10]
     if recent > 0:
         return _result(dom, "active", 1.0, f"{recent} threat hunts ran in the last {HUNT_WINDOW_DAYS} days; "
