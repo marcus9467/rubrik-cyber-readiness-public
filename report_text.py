@@ -31,7 +31,7 @@ METHOD_NOTES = [
     "2 or more quorum approvers, 12 character passwords) are guidance values, not Rubrik limits.",
     "Object counts are RSC object records, not distinct workloads. A VM can appear once per cluster; "
     "VM figures are collapsed to one record per VM, and templates are excluded.",
-    "Anomaly detection, threat monitoring, threat hunting and sensitive data discovery are scored by what RSC "
+    "Anomaly detection, threat monitoring and sensitive data discovery are scored by what RSC "
     "can show for the tenant. A capability with no data scores 0. The data cannot tell unavailable from "
     "switched off from hidden from the assessing account, so the report does not say which.",
     "Test/dev detection matches names such as dev, test, qa, uat and staging. It is a heuristic and "

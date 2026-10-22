@@ -28,28 +28,28 @@ def test_every_finding_id_appears_in_the_html():
 def test_capability_tile_names_what_is_missing_and_separates_off_from_blind():
     b = bundle()
     b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")          # blind: RSC does not report it
-    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}  # off: reported, never run
+    b["data"]["dhrc"]["scores"]["ANOMALIES_DETECTED"]["metrics"][0].update(value=0)  # off: reported, nothing enabled
     html, _ = build_html(b)
-    assert "2 of 4" in html
+    assert "1 of 3" in html
     assert "No data: Sensitive Data Discovery" in html
-    assert "Off: Threat Hunting" in html
+    assert "Off: Anomaly Detection" in html
     assert "detection capabilities returned no data" not in html  # the old tile counted off as no data
 
 
 def test_headline_separates_off_from_blind():
     b = bundle()
     b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")          # blind
-    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}  # off
+    b["data"]["dhrc"]["scores"]["ANOMALIES_DETECTED"]["metrics"][0].update(value=0)  # off
     html, _ = build_html(b)
-    assert "2 of 4 detection capabilities are not working: 1 returned no data and 1 is switched off." in html
-    assert "There is no data in RSC for Sensitive Data Discovery. Threat Hunting is switched off." in html
+    assert "2 of 3 detection capabilities are not working: 1 returned no data and 1 is switched off." in html
+    assert "There is no data in RSC for Sensitive Data Discovery. Anomaly Detection is switched off." in html
 
 
 def test_headline_for_off_only_does_not_say_returned_nothing():
     b = bundle()
-    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}
+    b["data"]["dhrc"]["scores"]["ANOMALIES_DETECTED"]["metrics"][0].update(value=0)
     html, _ = build_html(b)
-    assert "1 of 4 detection capabilities is switched off." in html
+    assert "1 of 3 detection capabilities is switched off." in html
     assert "returned nothing" not in html
     assert "no data in RSC" not in html
 
@@ -58,7 +58,23 @@ def test_headline_for_blind_only_keeps_returned_nothing():
     b = bundle()
     b["data"]["dhrc"]["scores"].pop("SENSITIVE_DATA")
     html, _ = build_html(b)
-    assert "1 of 4 detection capabilities returned nothing." in html
+    assert "1 of 3 detection capabilities returned nothing." in html
+
+
+def test_hunt_note_is_shown_unscored_and_never_as_a_card_or_alarm():
+    b = bundle()
+    b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}
+    html, result = build_html(b)
+    assert "Threat hunting (not scored)." in html and "No threat hunt has been run on this tenant." in html
+    assert 'class="alarm"' not in html and "Threat Hunting" not in html
+    assert all(c["state"] == "active" for c in result["capabilities"].values())
+
+
+def test_hunt_note_is_absent_when_hunt_history_is_unknown():
+    b = bundle()
+    b["data"]["detection"]["hunts"] = {"error": "denied"}
+    html, _ = build_html(b)
+    assert "Threat hunting (not scored)" not in html
 
 
 def test_blind_card_shows_its_reason_and_active_cards_do_not():
@@ -73,7 +89,7 @@ def test_blind_card_shows_its_reason_and_active_cards_do_not():
 def test_tile_for_a_fully_active_tenant():
     html, result = build_html(bundle())
     assert all(c["state"] == "active" for c in result["capabilities"].values())
-    assert "4 of 4" in html and "all fully covered" in html
+    assert "3 of 3" in html and "all fully covered" in html
 
 
 def test_untrusted_text_is_escaped():

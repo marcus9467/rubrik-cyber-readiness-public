@@ -6,7 +6,7 @@ Shared by the report and by delta.py so both agree on what "assessed" means.
 from capabilities import DOMAINS as CAPABILITY_DOMAINS
 
 # Domain -> collectors that must have succeeded for its score to mean anything.
-# The four detection capabilities are not here: they are scored from what the tenant can see, so a collector
+# The three detection capabilities are not here: they are scored from what the tenant can see, so a collector
 # failure is a 0 for them and never "not assessed" (see capabilities.py).
 DOMAIN_SOURCES = {
     "Identity": ["identity"], "MFA": ["mfa"], "Quorum": ["quorum"], "Access": ["access"],
@@ -31,7 +31,7 @@ def has_error(node, depth=0):
 def domain_rows(result, data):
     """[(domain, score or None)]. None means not assessed: a collector failed or never ran.
 
-    The four detection capabilities are the exception: they score 0 when RSC returns nothing."""
+    The three detection capabilities are the exception: they score 0 when RSC returns nothing."""
     status = result["collector_status"]
     caps = result.get("capabilities") or {}
     rows = []

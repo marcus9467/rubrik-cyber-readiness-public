@@ -35,7 +35,7 @@ def test_threat_gap_fires_by_default_and_is_dropped_when_not_licensed():
 
 def test_not_licensed_leaves_other_capabilities_and_ignores_unknown_names():
     r = score(with_threat_gap(), ["Threat Monitoring", "Not A Capability"])
-    assert {"Anomaly Detection", "Threat Hunting", "Sensitive Data Discovery"} <= set(r["capabilities"])
+    assert {"Anomaly Detection", "Sensitive Data Discovery"} <= set(r["capabilities"])
     assert r["not_licensed"] == ["Threat Monitoring"]
     assert score(hardened())["not_licensed"] == []
 

@@ -39,7 +39,7 @@ The work splits in two so the customer never needs a browser, fonts or the repor
 
 ## What the assessment covers
 
-Twelve collectors read the tenant. They feed 14 scored areas and four detection capabilities.
+Twelve collectors read the tenant. They feed 13 scored areas and three detection capabilities.
 
 | Collector | Reads |
 |---|---|
@@ -57,10 +57,10 @@ Twelve collectors read the tenant. They feed 14 scored areas and four detection 
 | `offsite` | Which SLA domains replicate to another cluster or archive to cloud, which cluster each archive target belongs to, and whether archives are immutable |
 
 Scored areas: Identity, MFA, Quorum, Access, RBAC, Immutability, Coverage, Platform, Anomaly Detection,
-Threat Monitoring, Threat Hunting, Sensitive Data Discovery, Alerting, Recovery.
+Threat Monitoring, Sensitive Data Discovery, Alerting, Recovery.
 
-Detection capabilities (the "Are you prepared?" page): Anomaly Detection, Threat Monitoring, Threat Hunting,
-Sensitive Data Discovery.
+Detection capabilities (the "Are you prepared?" page): Anomaly Detection, Threat Monitoring, Sensitive Data
+Discovery. Threat hunting is not scored; the page carries one unscored line on hunt history.
 
 ## Customer guide
 
@@ -328,7 +328,7 @@ detection work from names, so the redacted bundle carries the same classificatio
 
 | Section | What it tells you |
 |---|---|
-| **1. Are you prepared?** | The four detection capabilities, each scored by what RSC actually shows for the tenant. A capability with no data scores zero. |
+| **1. Are you prepared?** | The three detection capabilities, each scored by what RSC actually shows for the tenant. A capability with no data scores zero. |
 | **2. Where you stand** | Scores by area, RSC's own resilience scores alongside, and the priority findings with a fix-now / process grouping |
 | **3. Roadmap** | Projected score, NIST CSF view, and the 30/60/90 day plan |
 | **Appendix. Cluster inventory** | Every cluster with its software version, status, end-of-support state, and whether it archives to Rubrik Cloud Vault (RCV). A one-line summary also sits under "Where you stand". |

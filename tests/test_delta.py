@@ -59,7 +59,7 @@ def test_overall_is_like_for_like():
     assert "Recovery" in d["not_comparable"]
     assert d["overall"]["after"] > d["overall"]["before"]
     assert set(d["domains"]) == {"Identity", "MFA", "Quorum", "Access", "RBAC", "Immutability", "Coverage",
-                                 "Platform", "Anomaly Detection", "Threat Monitoring", "Threat Hunting",
+                                 "Platform", "Anomaly Detection", "Threat Monitoring",
                                  "Sensitive Data Discovery", "Alerting"}
 
 

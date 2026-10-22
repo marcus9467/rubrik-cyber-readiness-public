@@ -1,8 +1,7 @@
-"""What the tenant can actually see: four detection capabilities, each scored 0 to 100.
+"""What the tenant can actually see: three detection capabilities, each scored 0 to 100.
 
   Anomaly Detection         unusual change in backup data, such as mass encryption or deletion
   Threat Monitoring         continuous scan of backups for known malicious indicators
-  Threat Hunting            on-demand search of backups for an indicator during an incident
   Sensitive Data Discovery  where regulated data lives and who can open it
 
 A capability Rubrik cannot show data for scores 0. It is never "not assessed", because for a customer the
@@ -17,25 +16,21 @@ States:
   blind          RSC returned an error or no data for it (0)
   not_collected  the collector never ran, which means an older bundle. Not scored, not compared.
 
-Thresholds are the author's guidance, not Rubrik limits: threat hunting counts as in use if a hunt ran in the
-last 90 days (100), as lapsed if hunts exist but none in 90 days (50), and as unused otherwise (0).
+Threat hunting is not scored. It is an on-demand action for an incident, so a tenant that has never run a hunt has
+not failed anything. hunt_note() reports the history as one unscored line instead.
 """
 
-DOMAINS = ("Anomaly Detection", "Threat Monitoring", "Threat Hunting", "Sensitive Data Discovery")
-RULE_IDS = {"Anomaly Detection": "V-1", "Threat Monitoring": "V-2", "Threat Hunting": "V-3",
-            "Sensitive Data Discovery": "V-4"}
+DOMAINS = ("Anomaly Detection", "Threat Monitoring", "Sensitive Data Discovery")
+RULE_IDS = {"Anomaly Detection": "V-1", "Threat Monitoring": "V-2", "Sensitive Data Discovery": "V-4"}
 # Findings whose resolution lifts the ceiling on a domain's score (see ceilings()).
-FIXERS = {"Anomaly Detection": ("V-1",), "Threat Monitoring": ("V-2", "T-1"), "Threat Hunting": ("V-3",),
-          "Sensitive Data Discovery": ("V-4",)}
+FIXERS = {"Anomaly Detection": ("V-1",), "Threat Monitoring": ("V-2", "T-1"), "Sensitive Data Discovery": ("V-4",)}
 STATE_LABEL = {"active": "Active", "partial": "Partial coverage", "off": "Not turned on",
                "blind": "No data returned", "not_collected": "Not collected"}
-HUNT_WINDOW_DAYS = 90  # GUIDANCE
 
 # Wording for the "prepared for" cards and the V findings. Plain language, no edition claims.
 PREPARED_FOR = {
     "Anomaly Detection": "ransomware encrypting or mass-deleting your backup data",
     "Threat Monitoring": "malware that is already sitting in your backups",
-    "Threat Hunting": "an active incident where you must search every backup for the attacker's trail",
     "Sensitive Data Discovery": "a breach where you must say exactly what data was exposed",
 }
 CONSEQUENCE = {
@@ -43,8 +38,6 @@ CONSEQUENCE = {
                          "until someone notices something else is wrong.",
     "Threat Monitoring": "Backups are not scanned for known malicious indicators, so a restore point can carry "
                          "the attacker straight back in.",
-    "Threat Hunting": "In an incident your team cannot search backups for an indicator, so scoping the attack "
-                      "and choosing a clean restore point is guesswork.",
     "Sensitive Data Discovery": "Nobody can say where regulated data lives or who can open it, so after a breach "
                                 "the exposure cannot be sized.",
 }
@@ -55,8 +48,6 @@ PARTIAL_CONSEQUENCE = {
                          "there can run unnoticed.",
     "Threat Monitoring": "Backups outside the covered clusters and accounts are not scanned for known malicious "
                          "indicators, so a restore point from there can carry the attacker straight back in.",
-    "Threat Hunting": "Your team has not run a hunt recently, so the first search in a real incident will be "
-                      "unpractised.",
     "Sensitive Data Discovery": "Regulated data outside the covered clusters is not classified, so after a breach "
                                 "the exposure there cannot be sized.",
 }
@@ -72,8 +63,6 @@ GAP_TITLE = {
                           "Ransomware detection covers only part of the estate"),
     "Threat Monitoring": ("No visibility into malware inside backups",
                           "Malware scanning covers only part of the estate"),
-    "Threat Hunting": ("No ability to hunt for threats in backups",
-                       "Threat hunting has lapsed"),
     "Sensitive Data Discovery": ("No visibility into where sensitive data lives",
                                  "Sensitive data discovery covers only part of the estate"),
 }
@@ -193,33 +182,26 @@ def monitoring(data, status):
     return _result(dom, _classify(share), share, "Threat monitoring is on for " + "; ".join(parts) + ".")
 
 
-def hunting(data, status):
-    dom = "Threat Hunting"
-    st = _section(data, status, "detection")
-    if st == "missing":
-        return _result(dom, "not_collected", None, "")
+def hunt_note(data, status=None):
+    """One unscored line on threat hunt history, or None when there is nothing reliable to say.
+
+    Hunting is an on-demand action for an incident, so having run none is not a gap. This is a conversation
+    prompt, not a finding: it never touches a score, a card or the headline."""
+    status = status if status is not None else data.get("_status") or {}
+    if _section(data, status, "detection") != "ok":
+        return None
     det = data.get("detection")
-    if st == "error" or not isinstance(det, dict):
-        return _result(dom, "blind", None, "RSC returned no threat hunting data.",
-                       QUERY_FAILED.format("threat hunting"))
-    h = det.get("hunts")
-    if h is None:
-        return _result(dom, "not_collected", None, "")  # collector predates hunt history
-    if _is_stub(h):
-        return _result(dom, "blind", None, "RSC returned no threat hunt history.",
-                       QUERY_FAILED.format("threat hunt history"))
-    total, recent, latest = h.get("total") or 0, h.get("last90") or 0, (h.get("latest") or "")[:10]
-    if recent > 0:
-        return _result(dom, "active", 1.0, f"{recent} threat hunts ran in the last {HUNT_WINDOW_DAYS} days; "
-                       f"the most recent was on {latest}.")
-    if total > 0:
-        return _result(dom, "partial", 0.5, f"{total} threat hunts have run, none in the last "
-                       f"{HUNT_WINDOW_DAYS} days; the most recent was on {latest}.")
-    return _result(dom, "off", 0.0, "No threat hunt has ever been run.")
+    h = det.get("hunts") if isinstance(det, dict) else None
+    if not isinstance(h, dict) or _is_stub(h):
+        return None
+    total, latest = h.get("total") or 0, (h.get("latest") or "")[:10]
+    if total <= 0:
+        return "No threat hunt has been run on this tenant."
+    when = f"; the most recent started on {latest}" if latest else ""
+    return f"{total} threat hunt{'s have' if total != 1 else ' has'} been run on this tenant{when}."
 
 
-_FUNCS = {"Anomaly Detection": anomaly, "Threat Monitoring": monitoring, "Threat Hunting": hunting,
-          "Sensitive Data Discovery": sensitive}
+_FUNCS = {"Anomaly Detection": anomaly, "Threat Monitoring": monitoring, "Sensitive Data Discovery": sensitive}
 
 
 def compute(data, status=None):
