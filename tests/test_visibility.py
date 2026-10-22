@@ -58,24 +58,22 @@ def test_every_blind_path_says_why():
     b = bundle()
     b["data"]["threat"] = {"roots": {}, "objects": None}
     assert score(b)["capabilities"]["Threat Monitoring"]["reason"] == NOTHING_LISTED
-    b = bundle()
-    b["data"]["detection"]["hunts"] = {"error": "denied"}
-    assert "hunt history query failed" in score(b)["capabilities"]["Threat Hunting"]["reason"]
 
 
 def test_reason_is_empty_unless_blind_and_never_quotes_the_api():
     b = bundle()
-    b["data"]["detection"]["hunts"] = {"error": "HTTP 403 host vcenter.acme.example denied"}
+    b["data"]["threat"] = {"roots": {}, "objects": None}
+    b["status"]["dhrc"] = "error: HTTP 403 host vcenter.acme.example denied"
     caps = score(b)["capabilities"]
-    assert "acme" not in caps["Threat Hunting"]["reason"]
+    assert "acme" not in caps["Anomaly Detection"]["reason"]
     assert all(c["reason"] == "" for c in caps.values() if c["state"] != "blind")
 
 
-def test_hunt_failure_does_not_grey_out_alerting():
+def test_hunt_failure_does_not_grey_out_alerting_or_add_a_hunting_row():
     b = bundle()
     b["data"]["detection"]["hunts"] = {"error": "denied"}
     rows = dict(domain_rows(score(b), b["data"]))
-    assert rows["Threat Hunting"] == 0
+    assert "Threat Hunting" not in rows
     assert rows["Alerting"] is not None, "Alerting depends on settings and webhooks, not on hunt history"
 
 
@@ -85,15 +83,14 @@ def test_alerting_is_still_not_assessed_when_its_own_queries_fail():
     assert dict(domain_rows(score(b), b["data"]))["Alerting"] is None
 
 
-def test_never_hunted_is_critical_and_lapsed_is_not():
+def test_never_hunted_is_not_a_finding_and_does_not_move_the_score():
     b = bundle()
+    base = score(b)
     b["data"]["detection"]["hunts"] = {"total": 0, "last90": 0, "latest": None}
-    assert find(b, "V-3")["severity"] == "critical"
-    b["data"]["detection"]["hunts"] = {"total": 4, "last90": 0, "latest": "2026-01-01T00:00:00Z"}
-    f = find(b, "V-3")
-    # Lapsed scores 50, so it is half covered: medium, not critical and not high.
-    assert f["severity"] == "medium" and "lapsed" in f["title"]
-    assert score(b)["capabilities"]["Threat Hunting"]["score"] == 50
+    r = score(b)
+    assert "V-3" not in {f["id"] for f in r["findings"]}
+    assert r["domain_scores"] == base["domain_scores"] and r["counts"] == base["counts"]
+    assert r["hunt_note"] == "No threat hunt has been run on this tenant."
 
 
 def test_partial_coverage_is_high_or_medium_never_critical():
@@ -108,7 +105,7 @@ def test_old_bundle_without_hunt_history_is_not_called_blind():
     b = bundle()
     del b["data"]["detection"]["hunts"]
     assert "V-3" not in ids(b)
-    assert dict(domain_rows(score(b), b["data"]))["Threat Hunting"] is None
+    assert score(b)["hunt_note"] is None
 
 
 def test_t1_is_not_reported_twice():

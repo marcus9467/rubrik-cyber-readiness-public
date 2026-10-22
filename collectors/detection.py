@@ -22,7 +22,7 @@ query {
 HUNT_COUNT_Q = "query($begin: DateTime) { threatHunts(beginTime: $begin) { count } }"
 HUNT_TOTAL_Q = "query { threatHunts { count } }"
 HUNT_ROWS_Q = "query($begin: DateTime) { threatHunts(beginTime: $begin) { count nodes { startTime } } }"
-HUNT_WINDOW_DAYS = 90  # keep in step with capabilities.HUNT_WINDOW_DAYS
+HUNT_WINDOW_DAYS = 90  # only dates the 'last90' count kept in the bundle; hunting is not scored
 
 
 def collect_hunts(client, now=None):

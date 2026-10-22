@@ -344,14 +344,6 @@ REMEDIATION = {
         ],
         "docs": [],
     },
-    "V-3": {
-        "steps": [
-            "Confirm with the Rubrik account team whether threat hunting is licensed on this tenant.",
-            "Run a hunt for a known indicator against a recent snapshot and time how long the answer takes.",
-            "Add hunting to the incident runbook and repeat it on a schedule.",
-        ],
-        "docs": [],
-    },
     "V-4": {
         "steps": [
             "Confirm with the Rubrik account team whether sensitive data discovery is licensed on this tenant.",

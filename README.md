@@ -163,8 +163,8 @@ your `redaction-map.json` to find the real object.
 The PDF contains:
 
 - An executive summary with a posture score
-- Four detection capabilities: Anomaly Detection, Threat Monitoring, Threat Hunting, Sensitive Data Discovery
-- Scores for 14 areas, with ranked findings, evidence and fix steps
+- Three scored detection capabilities: Anomaly Detection, Threat Monitoring, Sensitive Data Discovery, plus an unscored note on threat hunt history
+- Scores for 13 areas, with ranked findings, evidence and fix steps
 - A 30/60/90 day roadmap
 
 Scores start at 100 per area and drop for each finding. They show relative gaps and are not a benchmark. Framework

@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from capabilities import ceilings, compute  # noqa: E402
+from capabilities import ceilings, compute, hunt_note  # noqa: E402
 
 OK = {"dhrc": "ok", "threat": "ok", "detection": "ok"}
 
@@ -25,8 +25,9 @@ def data(ad=(9, 9), sdd=(9, 9), roots=None, objects=None, hunts=None, **extra):
 
 def test_healthy_tenant_is_active_everywhere():
     caps = compute(data(), OK)
-    assert [c["state"] for c in caps.values()] == ["active"] * 4
-    assert [c["score"] for c in caps.values()] == [100] * 4
+    assert list(caps) == ["Anomaly Detection", "Threat Monitoring", "Sensitive Data Discovery"]
+    assert [c["state"] for c in caps.values()] == ["active"] * 3
+    assert [c["score"] for c in caps.values()] == [100] * 3
     assert ceilings(caps) == {}
 
 
@@ -40,7 +41,7 @@ def test_blind_capability_scores_zero_not_none():
 def test_dhrc_failure_blinds_both_anomaly_and_sensitive_data():
     caps = compute({"detection": data()["detection"], "threat": data()["threat"]}, {**OK, "dhrc": "error: x"})
     assert caps["Anomaly Detection"]["score"] == 0 and caps["Sensitive Data Discovery"]["score"] == 0
-    assert caps["Threat Hunting"]["state"] == "active"
+    assert caps["Threat Monitoring"]["state"] == "active"
 
 
 def test_missing_metric_is_blind_and_zero_coverage_is_off():
@@ -61,23 +62,38 @@ def test_partial_scores_the_coverage_and_is_never_100_or_0():
 def test_old_bundle_without_the_collector_is_not_collected_not_blind():
     caps = compute({}, {})
     assert all(c["state"] == "not_collected" and c["score"] is None for c in caps.values())
-    old_detection = {"detection": {"settings": {}}, "dhrc": data()["dhrc"], "threat": data()["threat"]}
-    c = compute(old_detection, OK)["Threat Hunting"]
-    assert c["state"] == "not_collected", "a detection section with no hunts key predates hunt history"
 
 
 def test_present_data_with_no_status_entry_counts_as_collected():
     assert compute(data(), {})["Anomaly Detection"]["state"] == "active"
 
 
-def test_threat_hunting_states():
-    assert compute(data(), OK)["Threat Hunting"]["score"] == 100
-    lapsed = compute(data(hunts={"total": 4, "last90": 0, "latest": "2026-01-01T00:00:00Z"}), OK)["Threat Hunting"]
-    assert lapsed["state"] == "partial" and lapsed["score"] == 50
-    never = compute(data(hunts={"total": 0, "last90": 0, "latest": None}), OK)["Threat Hunting"]
-    assert never["state"] == "off" and never["score"] == 0 and "ever been run" in never["evidence"]
-    stub = compute(data(hunts={"error": "denied"}), OK)["Threat Hunting"]
-    assert stub["state"] == "blind" and stub["score"] == 0
+def test_hunting_is_not_a_scored_capability():
+    caps = compute(data(hunts={"total": 0, "last90": 0, "latest": None}), OK)
+    assert "Threat Hunting" not in caps
+    assert compute(data(hunts={"error": "denied"}), OK) == compute(data(), OK)
+
+
+def test_hunt_note_reports_history_and_never_says_gap():
+    assert hunt_note(data(), OK) == "5 threat hunts have been run on this tenant; the most recent started on 2026-10-01."
+    assert hunt_note(data(hunts={"total": 1, "last90": 0, "latest": "2026-01-01T00:00:00Z"}), OK).startswith(
+        "1 threat hunt has been run")
+    assert hunt_note(data(hunts={"total": 0, "last90": 0, "latest": None}), OK) == \
+        "No threat hunt has been run on this tenant."
+
+
+def test_hunt_note_with_hunts_but_no_start_time_does_not_print_an_empty_date():
+    note = hunt_note(data(hunts={"total": 2, "last90": 0, "latest": None}), OK)
+    assert note == "2 threat hunts have been run on this tenant." and "started on" not in note
+
+
+def test_hunt_note_is_silent_when_it_cannot_be_sure():
+    assert hunt_note(data(hunts={"error": "denied"}), OK) is None            # query failed
+    d = data()
+    del d["detection"]["hunts"]
+    assert hunt_note(d, OK) is None                                          # bundle predates hunt history
+    assert hunt_note(data(), {**OK, "detection": "error: x"}) is None        # collector failed
+    assert hunt_note({}, {}) is None
 
 
 def test_threat_monitoring_scores_clusters_and_accounts_and_ignores_object_stats():

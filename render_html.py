@@ -299,7 +299,7 @@ def cover(result, rows, ov, findings, proj, collected):
 
 
 def prepared_for(result):
-    """The four detection capabilities as cards. A capability with no data is a big red zero, not a grey blank."""
+    """The three detection capabilities as cards. A capability with no data is a big red zero, not a grey blank."""
     caps = result.get("capabilities") or {}
     live = [c for c in caps.values() if c["score"] is not None]
     if not live:
@@ -357,6 +357,10 @@ def prepared_for(result):
     note = ""
     if any(c["state"] == "blind" for c in caps.values()):
         note = f'<p class="small">{esc(capabilities.BLIND_NOTE)}</p>'
+    hunt = result.get("hunt_note")
+    if hunt:
+        note += (f'<p class="small"><b>Threat hunting (not scored).</b> {esc(hunt)} Hunting is an on-demand action '
+                 "for an incident, so this is a question for the team and not a gap.</p>")
     skipped = result.get("not_licensed") or []
     skip_note = ""
     if skipped:

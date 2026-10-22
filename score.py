@@ -672,10 +672,6 @@ def v_monitoring(d):
     return _visibility(d, "Threat Monitoring", "V-2", "Get threat monitoring running on every cluster and account.")
 
 
-def v_hunting(d):
-    return _visibility(d, "Threat Hunting", "V-3", "Make threat hunting a practised capability, not a console feature.")
-
-
 def v_sensitive(d):
     return _visibility(d, "Sensitive Data Discovery", "V-4", "Get sensitive data discovery running on regulated data.")
 
@@ -692,13 +688,13 @@ RULES = [
     t_email_unused, t_template_missing_eventinfo, t_critical_only, t_cdm_silent,
     rc_no_plans, rc_never_run, rc_last_failed,
     rp_no_replica, rp_no_archive, rp_single_copy,
-    v_anomaly, v_monitoring, v_hunting, v_sensitive,
+    v_anomaly, v_monitoring, v_sensitive,
 ]
 
 
 # Rules that belong to one detection capability. A capability the customer is not licensed for is left out entirely.
 CAPABILITY_RULES = {"Threat Monitoring": {"V-2", "T-1", "T-10", "T-11"}, "Anomaly Detection": {"V-1", "T-3"},
-                    "Threat Hunting": {"V-3"}, "Sensitive Data Discovery": {"V-4", "T-2"}}
+                    "Sensitive Data Discovery": {"V-4", "T-2"}}
 
 
 def score(bundle, not_licensed=()):
@@ -722,7 +718,7 @@ def score(bundle, not_licensed=()):
     for f in findings:
         domains.setdefault(f["domain"], []).append(f)
     scores = {dom: max(0, 100 - sum(SEVERITY_PENALTY[f["severity"]] for f in fs)) for dom, fs in domains.items()}
-    # The four detection capabilities are scored by what the tenant can see, and a capability with no data is a 0,
+    # The three detection capabilities are scored by what the tenant can see, and a capability with no data is a 0,
     # not an unscored gap. Findings in the same area can only pull the score lower.
     caps = capabilities.compute(data, bundle["status"])
     for n in not_licensed:
@@ -739,6 +735,7 @@ def score(bundle, not_licensed=()):
         "findings": findings,
         "domain_scores": scores,
         "capabilities": caps,
+        "hunt_note": capabilities.hunt_note(data, bundle["status"]),
         "counts": {s: sum(f["severity"] == s for f in findings) for s in SEVERITY_ORDER},
         "skipped_rules": skipped,
         "not_licensed": sorted(not_licensed),
