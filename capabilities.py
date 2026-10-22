@@ -66,9 +66,7 @@ GAP_TITLE = {
     "Sensitive Data Discovery": ("No visibility into where sensitive data lives",
                                  "Sensitive data discovery covers only part of the estate"),
 }
-BLIND_NOTE = ("A capability marked No data returned scores zero: this assessment could not see it, which is not "
-              "the same as it being off. The reason is shown on the card. The customer's administrator can "
-              "confirm the actual state in RSC.")
+BLIND_NOTE = "No data returned means RSC gave the assessment account nothing to read for that capability. It scores zero."
 
 
 def _is_stub(x):
