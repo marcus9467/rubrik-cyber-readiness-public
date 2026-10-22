@@ -44,7 +44,6 @@ MAP = {
     "R-5": ("PR", [H_ACCESSMGMT]),
     "S-1": ("PR", [H_INTEGRITY, H_BACKUP]),
     "S-2": ("PR", [H_INTEGRITY, H_BACKUP]),
-    "S-3": ("PR", [H_INTEGRITY, H_BACKUP]),
     "RP-1": ("PR", [H_BACKUP, H_DR]),
     "RP-2": ("PR", [H_BACKUP, H_DR]),
     "RP-3": ("PR", [H_BACKUP, H_DR]),

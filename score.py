@@ -337,23 +337,6 @@ def s_immutable_archive(d):
               "Enable compliance immutability on archival locations for locked SLAs.", "fix_now")
 
 
-def s_rcv_not_immutable(d):
-    """RCV locations on Azure that RSC reports with neither blob nor container immutability. RCV on AWS and GCP has no
-    immutability field in RSC, so it is never reported here."""
-    import inventory_report
-    a = inventory_report.archive_storage(d)
-    t = (a or {}).get("targets")
-    if not t or not t["rcvImmutability"]["none"]:
-        return None
-    n, total = t["rcvImmutability"]["none"], t["rcv"]["count"]
-    cont = t["rcvImmutability"]["container"]
-    extra = (f" A further {cont} use container-level immutability, which Rubrik has deprecated." if cont else "")
-    return _f("S-3", "Immutability", "high", "Rubrik Cloud Vault locations without immutability",
-              f"{n} of {total} Rubrik Cloud Vault locations have no immutability: neither blob-level immutability "
-              f"nor a container lock period. Snapshots in them can be altered or deleted.{extra}",
-              "Archive to a Rubrik Cloud Vault location with blob-level immutability.", "fix_now")
-
-
 # ---- Coverage -------------------------------------------------------------------------------
 
 def c_unprotected(d):
@@ -698,7 +681,7 @@ RULES = [
     a_allowlist, a_lockout, a_no_sso, a_password,
     r_admin_share, r_admin_service_accounts, r_admin_without_totp, r_custom_admin_roles, r_sso_admin_groups,
     s_retention_lock, s_immutable_archive, c_unprotected, c_nonprod, c_partial, c_tier0, c_backup_health,
-    s_rcv_not_immutable, cl_encryption, cl_tunnel, cl_tpr_unknown, t_threat_monitoring, t_cdm_not_assessed, t_cdm_smart_scan,
+    cl_encryption, cl_tunnel, cl_tpr_unknown, t_threat_monitoring, t_cdm_not_assessed, t_cdm_smart_scan,
     t_open_sensitive,
     t_anomaly_alerts, t_event_forwarding, t_webhooks_failing,
     t_email_unused, t_template_missing_eventinfo, t_critical_only, t_cdm_silent,

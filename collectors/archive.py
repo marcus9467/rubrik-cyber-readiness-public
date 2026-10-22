@@ -13,10 +13,7 @@ TARGETS_Q = """
 query Targets($after: String) {
   targets(after: $after, first: 200) {
     count
-    nodes {
-      id name targetType consumedBytes status
-      ... on RubrikManagedRcsTarget { tier isVersionLevelImmutabilityEnabled immutabilityPeriodDays }
-    }
+    nodes { id name targetType consumedBytes status }
     pageInfo { hasNextPage endCursor }
   }
 }
@@ -40,11 +37,7 @@ def _targets(client):
     nodes = client.paginate(TARGETS_Q, "targets")
     return [{"id": n.get("id"), "name": n.get("name"), "type": n.get("targetType"),
              "bytes": n.get("consumedBytes"), "status": n.get("status"),
-             "readOnly": n.get("status") == READ_ONLY,
-             # Only RCV on Azure reports these. AWS and GCP RCV carry no immutability field in RSC, so the keys are
-             # absent for them and the report says "not reported", never "not immutable".
-             "tier": n.get("tier"), "blobImmutable": n.get("isVersionLevelImmutabilityEnabled"),
-             "lockDays": n.get("immutabilityPeriodDays")} for n in nodes]
+             "readOnly": n.get("status") == READ_ONLY} for n in nodes]
 
 
 def _entitlements(client):
