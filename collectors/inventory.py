@@ -161,6 +161,27 @@ def _reconciliation(client, summary):
     }
 
 
+BACKUP_HEALTH_RANGE = "PAST_7_DAYS"
+
+
+def _backup_health(client):
+    """Active, protected objects by SLA compliance over the past 7 days.
+
+    The default window is the whole protection lifetime, which flags an object forever for one old miss, so the
+    window is explicit. NOT_AVAILABLE and EMPTY mean RSC could not say, and are kept apart from a pass or a fail.
+    """
+    q = "query($f: SnappableFilterInput){snappableConnection(first:1, filter:$f){count}}"
+    base = {"objectState": ["ACTIVE"], "protectionStatus": ["Protected"], "slaTimeRange": BACKUP_HEALTH_RANGE}
+    n = lambda status: client.query(q, {"f": {**base, "complianceStatus": [status]}})["snappableConnection"]["count"]
+    return {
+        "window": BACKUP_HEALTH_RANGE,
+        "inCompliance": n("IN_COMPLIANCE"),
+        "outOfCompliance": n("OUT_OF_COMPLIANCE"),
+        "notAvailable": n("NOT_AVAILABLE"),
+        "empty": n("EMPTY"),
+    }
+
+
 def _dedupe_by_id(rows):
     """Keep the first row per object id. The same object is listed once per replicating cluster."""
     seen, out = set(), []
@@ -201,5 +222,6 @@ def collect(client):
         "rows": rows,
     }
     s["vmEnvironment"] = _vm_environment(client)
+    s["backupHealth"] = _backup_health(client)
     s["reconciliation"] = _reconciliation(client, s)
     return s

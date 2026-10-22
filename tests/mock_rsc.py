@@ -113,6 +113,9 @@ def answer(q, v):
     if "snappableConnection(first:1" in q:
         f = v["f"]
         n = {("ACTIVE",): 100, ("RELIC",): 7, ("ARCHIVED",): 3}.get(tuple(f["objectState"]), 0)
+        if "complianceStatus" in f:
+            return {"snappableConnection": {"count": {"IN_COMPLIANCE": 70, "OUT_OF_COMPLIANCE": 6,
+                                                      "NOT_AVAILABLE": 2, "EMPTY": 2}[f["complianceStatus"][0]]}}
         if "protectionStatus" in f:
             n = {"Protected": 80, "NoSla": 15, "DoNotProtect": 5}[f["protectionStatus"][0]]
         return {"snappableConnection": {"count": n}}

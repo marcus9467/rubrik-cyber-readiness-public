@@ -52,6 +52,7 @@ MAP = {
     "C-2": ("ID", [H_RISK, H_BACKUP]),
     "C-3": ("RC", [H_BACKUP]),
     "C-4": ("ID", [H_RISK, H_BACKUP, H_DR]),
+    "C-5": ("RC", [H_BACKUP]),
     "CL-1": ("PR", [H_ENC]),
     "CL-2": ("PR", [H_ACCESS]),
     "CL-3": ("PR", [H_ACCESS]),

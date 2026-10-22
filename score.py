@@ -372,6 +372,26 @@ def c_partial(d):
               "Assign the SLA at the vCenter or folder level so every cluster inherits it.", "fix_now")
 
 
+BACKUP_HEALTH_HIGH = 0.10  # GUIDANCE: share of assessed objects out of compliance that moves this to high
+
+
+def c_backup_health(d):
+    b = d.get("inventory", {}).get("backupHealth")
+    if not b or not b["outOfCompliance"]:
+        return None
+    assessed = b["inCompliance"] + b["outOfCompliance"]
+    share = b["outOfCompliance"] / assessed
+    unknown = b["notAvailable"] + b["empty"]
+    ev = (f"{b['outOfCompliance']} of {assessed} protected active objects missed snapshots against their SLA "
+          f"in the past 7 days (object records, not distinct workloads).")
+    if unknown:
+        ev += f" A further {unknown} could not be assessed by RSC and are not counted."
+    return _f("C-5", "Coverage", "high" if share >= BACKUP_HEALTH_HIGH else "medium",
+              "Protected objects are missing snapshots", ev,
+              "Find why each object is out of compliance before the next incident; a protected object that "
+              "is not backing up is not recoverable.", "fix_now")
+
+
 # ---- Platform / threat ----------------------------------------------------------------------
 
 def c_tier0(d):
@@ -622,7 +642,7 @@ RULES = [
     mfa_not_enforced, mfa_remember, q_disabled, q_single_approver,
     a_allowlist, a_lockout, a_no_sso, a_password,
     r_admin_share, r_admin_service_accounts, r_admin_without_totp, r_custom_admin_roles, r_sso_admin_groups,
-    s_retention_lock, s_immutable_archive, c_unprotected, c_nonprod, c_partial, c_tier0,
+    s_retention_lock, s_immutable_archive, c_unprotected, c_nonprod, c_partial, c_tier0, c_backup_health,
     cl_encryption, cl_tunnel, cl_tpr_unknown, t_threat_monitoring, t_open_sensitive,
     t_anomaly_alerts, t_event_forwarding, t_webhooks_failing,
     t_email_unused, t_template_missing_eventinfo, t_critical_only, t_cdm_silent,
