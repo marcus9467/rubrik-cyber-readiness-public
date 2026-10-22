@@ -204,15 +204,23 @@ function Update-RscToken($Client) {
     $Client.Expiry = (Get-Date).AddSeconds($ttl - 60)
 }
 
-function Invoke-RscQuery($Client, [string]$Gql, $Variables = @{}, [int]$Retries = 3) {
+# 2, 4, 8, 16 seconds, capped at 30. A slow page on a large tenant needs room to recover.
+function Get-Backoff([int]$Attempt) { return [Math]::Min([Math]::Pow(2, $Attempt + 1), 30) }
+
+function Invoke-RscQuery($Client, [string]$Gql, $Variables = @{}, [int]$Retries = 5) {
     if ((Get-Date) -gt $Client.Expiry) { Update-RscToken $Client }
     $payload = ConvertTo-Json -InputObject ([ordered]@{ query = $Gql; variables = $Variables }) -Depth 20
     $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
     $headers = @{ Authorization = "Bearer $($Client.Token)" }
     for ($attempt = 0; $attempt -lt $Retries; $attempt++) {
-        $r = Send-Http $Client.GqlUrl $bytes 'application/json' $headers
+        # Timeouts and connection errors have no response, so Send-Http throws. Retry them like 429 and 5xx.
+        try { $r = Send-Http $Client.GqlUrl $bytes 'application/json' $headers }
+        catch {
+            if ($attempt -lt $Retries - 1) { Start-Sleep -Seconds (Get-Backoff $attempt); continue }
+            throw "request failed after $Retries attempts: $($_.Exception.Message)"
+        }
         if (@(429, 502, 503, 504) -contains $r.Status -and $attempt -lt $Retries - 1) {
-            Start-Sleep -Seconds ([Math]::Pow(2, $attempt)); continue
+            Start-Sleep -Seconds (Get-Backoff $attempt); continue
         }
         if ($r.Status -ne 200) {
             throw "HTTP $($r.Status): $($r.Text.Substring(0, [Math]::Min(300, $r.Text.Length)))"
@@ -233,6 +241,7 @@ function Invoke-RscQuery($Client, [string]$Gql, $Variables = @{}, [int]$Retries 
 function Invoke-RscPaginate($Client, [string]$Gql, [string]$Path, $Variables = @{}) {
     $nodes = New-Object System.Collections.Generic.List[object]
     $after = $null
+    $pages = 0
     while ($true) {
         $vars = @{}
         foreach ($k in $Variables.Keys) { $vars[$k] = $Variables[$k] }
@@ -241,6 +250,11 @@ function Invoke-RscPaginate($Client, [string]$Gql, [string]$Path, $Variables = @
         foreach ($key in $Path.Split('.')) { $conn = $conn.$key }
         if ($null -eq $conn) { throw "no connection at '$Path' in the response" }
         foreach ($n in @($conn.nodes)) { if ($null -ne $n) { $nodes.Add($n) } }
+        $pages++
+        if ($pages % 10 -eq 0) {
+            $of = if ($conn.count) { " of $($conn.count)" } else { '' }
+            Write-Host "  ${Path}: $($nodes.Count)$of records, $pages pages"
+        }
         if (-not $conn.pageInfo.hasNextPage) { return , $nodes.ToArray() }
         $after = $conn.pageInfo.endCursor
     }
