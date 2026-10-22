@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Credentials and collected tenant data never go in the repo
+*.sa.json
+*service-account*.json
+bundle.json
+bundle*.json
+redaction-map.json
+tests/.mock-sa.json
+*.pdf
+out/
+
+# Trademarked logo assets are supplied locally, never committed
+assets/rubrik-logo*
