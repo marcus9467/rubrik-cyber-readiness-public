@@ -15,3 +15,6 @@ out/
 
 # Trademarked logo assets are supplied locally, never committed
 assets/rubrik-logo*
+
+# Local branding (logo, palette, footer) is supplied per machine, never committed
+brand/
