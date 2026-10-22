@@ -90,7 +90,8 @@ def test_summary_states_rcv_is_outside_the_tenancy_and_shows_the_entitlement():
     assert "2.50 TB" in html and "7.50 TB" in html and "25%" in html and "75%" in html
     assert "2.50 TB used of 15 TB entitled (16.7%)" in html
     assert "credentials for your own cloud accounts do not reach it" in html
-    assert "retention lock and quorum approval" in html
+    assert "immutability stops snapshots being altered or deleted" in html
+    assert "retention lock" not in html.split("Why RCV matters")[1].split("</div>")[0]
 
 
 def test_summary_says_unknown_when_a_query_failed():
