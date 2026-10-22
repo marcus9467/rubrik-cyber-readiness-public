@@ -216,6 +216,26 @@ If the `assets/` folder is missing or incomplete, the page falls back to system 
 text mark in place of the Rubrik logo, which is not distributed with this repository. The fonts are licensed
 under the SIL Open Font License (the license files sit beside them in `assets/fonts/`).
 
+### Branding the report
+
+The repository does not ship the Rubrik logo. Without it the report uses a text mark and still renders. To
+brand it, add the files locally. Git ignores `assets/rubrik-logo*`, so they cannot be committed by accident.
+
+| Style | File to add | Format |
+|---|---|---|
+| `brief` (default) | `assets/rubrik-logo-primary-linear.svg` | SVG, drawn at 58 x 24 pt |
+| `classic` | `assets/rubrik-logo.png` | Square PNG, drawn at 0.5 in |
+
+Every render prints one `logo:` line, so check it before the PDF goes to a customer:
+
+```
+logo: using /path/to/assets/rubrik-logo-primary-linear.svg
+logo: not found, using the text mark. To brand the report, add /path/to/assets/rubrik-logo-primary-linear.svg
+```
+
+A file that exists but is not an SVG is reported and skipped. Only add the logo to a copy of the toolkit you
+run yourself; the customer collector never needs it.
+
 ### Render the report
 
 ```
@@ -491,7 +511,8 @@ yourself.
 | Coverage looks too low | Role scoped to part of the hierarchy | Re-scope the role to all objects |
 | `Chrome not found at ...` | No Chrome or Chromium on the usual paths or on `PATH` | Install one, set `CHROME` to its full path, or use `--style classic` |
 | `Chrome did not finish within 180 seconds` | Very large report or a hung Chrome | Close other Chrome instances and retry |
-| Plain fonts and a text "Rubrik" mark | The `assets/` folder is missing or incomplete | Restore `assets/` from the repository |
+| Text "Rubrik" mark instead of the logo | The logo is not in the repository. The render prints a `logo:` line saying what it found | See [Branding the report](#branding-the-report) |
+| Plain system fonts | The `assets/fonts/` folder is missing or incomplete | Restore `assets/fonts/` from the repository |
 | `...cannot be loaded because running scripts is disabled` (PowerShell) | Windows execution policy | `powershell -ExecutionPolicy Bypass -File .\Invoke-CyberReadiness.ps1 ...` |
 | `ModuleNotFoundError: requests` | Dependency missing | `pip install requests` |
 | `ModuleNotFoundError: reportlab` | Using `--style classic` | `pip install reportlab` |
@@ -515,8 +536,8 @@ yourself.
 - **Redaction is name-based.** See above.
 - **Chrome discovery on Linux and Windows is untested.** The toolkit looks for Chrome or Chromium on the usual
   paths and on `PATH`, but it has only been run on macOS. Set `CHROME` if it is not found.
-- **No Rubrik logo.** The logo is a trademark and is not included. To brand the PDF, drop an SVG at
-  `assets/rubrik-logo-primary-linear.svg` (picked up automatically; gitignored here).
+- **No Rubrik logo.** The logo is a trademark and is not included. See
+  [Branding the report](#branding-the-report).
 - **Python 3.12 only** has been tested.
 - **Redaction scope.** Bundles collected before the offsite and recovery redaction fix carried SLA names,
   archive target names, replication cluster names and recovery plan names in `bundle.redacted.json`. Do not send

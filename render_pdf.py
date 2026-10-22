@@ -36,6 +36,12 @@ RULE = HexColor("#D8D2CC")
 
 LOGO = Path(__file__).resolve().parent / "assets" / "rubrik-logo.png"
 
+
+def logo_status():
+    if LOGO.exists():
+        return f"logo: using {LOGO}"
+    return f"logo: not found, using the text mark. To brand the classic report, add {LOGO}"
+
 SEV_COLOR = {"critical": RED, "high": RED, "medium": AMBER, "low": MID_GRAY, "info": MID_GRAY}
 TAG_LABEL = {
     "fix_now": "Fix now",
@@ -389,6 +395,7 @@ def main():
         from render_html import build as build_brief
         result = build_brief(json.loads(bundle_path.read_text()), out, previous)
     else:
+        print(logo_status())
         result = build(json.loads(bundle_path.read_text()), out, previous)
     print(f"wrote {out} ({len(result['findings'])} findings)")
 
