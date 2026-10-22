@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+import brand
 from reportlab.lib.colors import HexColor, white
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
@@ -25,22 +26,31 @@ from roadmap import csf_rows, plan, projections
 from score import score
 
 # Brand v1.1 tokens
-INK = HexColor("#17151F")
-OFF_WHITE = HexColor("#FAF5F1")
-TEAL = HexColor("#008783")
-TEAL_TINT = HexColor("#D9FFFC")
-RED = HexColor("#DA4750")
-AMBER = HexColor("#E8A317")
-MID_GRAY = HexColor("#6E7574")
-RULE = HexColor("#D8D2CC")
+_B = brand.load()
+_P = _B["palette"]
+INK = HexColor(_P["ink"])
+OFF_WHITE = HexColor(_P["card_bg"])
+TEAL = HexColor(_P["accent"])  # name kept; the accent is whatever the brand says
+TEAL_TINT = HexColor(_P["card_bg"])
+RED = HexColor(_P["red"])
+AMBER = HexColor(_P["amber"])
+MID_GRAY = HexColor(_P["muted"])
+RULE = HexColor(_P["rule"])
 
-LOGO = Path(__file__).resolve().parent / "assets" / "rubrik-logo.png"
+def _logo_png():
+    for p in (brand.brand_dir() / "logo.png", Path(__file__).resolve().parent / "assets" / "rubrik-logo.png"):
+        if p.exists():
+            return p
+    return None
+
+
+LOGO = _logo_png()
 
 
 def logo_status():
-    if LOGO.exists():
+    if LOGO:
         return f"logo: using {LOGO}"
-    return f"logo: not found, using the text mark. To brand the classic report, add {LOGO}"
+    return f"logo: not found, using the text mark. To brand the classic report, add {brand.brand_dir() / 'logo.png'}"
 
 SEV_COLOR = {"critical": RED, "high": RED, "medium": AMBER, "low": MID_GRAY, "info": MID_GRAY}
 TAG_LABEL = {
@@ -101,7 +111,7 @@ def chip(text, color):
 
 def header_block(result, overall_score):
     # The brandmark PNG is square (256x256); never stretch it.
-    logo = Image(str(LOGO), width=0.5 * inch, height=0.5 * inch, hAlign="LEFT") if LOGO.exists() else P("Rubrik", H3)
+    logo = Image(str(LOGO), width=0.5 * inch, height=0.5 * inch, hAlign="LEFT") if LOGO else P(_B["text_mark"], H3)
     date = datetime.fromisoformat(result["collected_at"]).strftime("%B %d, %Y")
     left = [logo, Spacer(1, 6), P("Cyber Readiness Assessment", H1),
             P(f"{result['customer']}  |  data collected {date}", SMALL)]
@@ -189,7 +199,7 @@ def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 7.5)
     canvas.setFillColor(MID_GRAY)
-    canvas.drawString(0.75 * inch, 0.5 * inch, "Rubrik Cyber Readiness Assessment  |  Confidential")
+    canvas.drawString(0.75 * inch, 0.5 * inch, f"Cyber Readiness Assessment  |  {_B['footer_left']}")
     canvas.drawRightString(letter[0] - 0.75 * inch, 0.5 * inch, f"Page {doc.page}")
     canvas.restoreState()
 
@@ -375,7 +385,7 @@ def build(bundle, out_path, previous=None):
 
     doc = SimpleDocTemplate(str(out_path), pagesize=letter, leftMargin=0.75 * inch, rightMargin=0.75 * inch,
                             topMargin=0.7 * inch, bottomMargin=0.8 * inch,
-                            title=f"Cyber Readiness Assessment - {result['customer']}", author="Rubrik")
+                            title=f"Cyber Readiness Assessment - {result['customer']}", author=_B["author"])
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return result
 

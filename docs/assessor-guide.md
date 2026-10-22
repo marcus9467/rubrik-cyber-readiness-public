@@ -209,22 +209,29 @@ Send **only** `bundle.redacted.json`.
 |---|---|
 | Python 3.12 | Tested version |
 | Google Chrome or Chromium | Prints the HTML report to PDF. Found automatically on macOS, Linux and Windows. Set `CHROME` to override. |
-| Brand assets | Host Grotesk and DM Mono fonts ship in `assets/`. Nothing to install. The Rubrik logo does not ship; the report shows a text mark. |
+| Brand assets | None needed. The report is neutral by default; see [Branding the report](#branding-the-report). |
 | `pip install reportlab` | Only for `--style classic`, which needs no browser |
 
-If the `assets/` folder is missing or incomplete, the page falls back to system fonts. The report uses a
-text mark in place of the Rubrik logo, which is not distributed with this repository. The fonts are licensed
-under the SIL Open Font License (the license files sit beside them in `assets/fonts/`).
+The report uses system fonts and a text mark unless you brand it. The optional fonts in `assets/fonts/` are
+licensed under the SIL Open Font License (the license files sit beside them).
 
 ### Branding the report
 
-The repository does not ship the Rubrik logo. Without it the report uses a text mark and still renders. To
-brand it, add the files locally. Git ignores `assets/rubrik-logo*`, so they cannot be committed by accident.
+The repository ships a neutral report: plain palette, system fonts, a generic "Confidential" footer and a text
+mark. Your look lives in a local `brand/` folder. Git ignores it, so it cannot be committed by accident.
 
-| Style | File to add | Format |
-|---|---|---|
-| `brief` (default) | `assets/rubrik-logo-primary-linear.svg` | SVG, drawn at 58 x 24 pt |
-| `classic` | `assets/rubrik-logo.png` | Square PNG, drawn at 0.5 in |
+| File in `brand/` | What it does |
+|---|---|
+| `logo.svg` | Logo for the `brief` style (default), drawn at 58 x 24 pt |
+| `logo.png` | Logo for the `classic` style, square, drawn at 0.5 in |
+| `brand.json` | Palette, footer, header, text mark, PDF author, bundled fonts. Every key is optional |
+
+Copy [docs/brand.example.json](brand.example.json) to `brand/brand.json` and edit it. Palette keys are `ink`,
+`muted`, `soft`, `accent`, `accent2`, `card_bg`, `card_line`, `rule`, `red` and `amber`, each `#RRGGBB`. A bad
+value or a malformed file is ignored and the neutral default is used. `bundled_fonts: true` embeds the Open
+Font License fonts in `assets/fonts/`. Set `CRR_BRAND_DIR` to use a different folder, for example one per brand.
+
+The older `assets/rubrik-logo-primary-linear.svg` and `assets/rubrik-logo.png` paths still work as a fallback.
 
 Every render prints one `logo:` line, so check it before the PDF goes to a customer:
 
@@ -512,7 +519,7 @@ yourself.
 | `Chrome not found at ...` | No Chrome or Chromium on the usual paths or on `PATH` | Install one, set `CHROME` to its full path, or use `--style classic` |
 | `Chrome did not finish within 180 seconds` | Very large report or a hung Chrome | Close other Chrome instances and retry |
 | Text "Rubrik" mark instead of the logo | The logo is not in the repository. The render prints a `logo:` line saying what it found | See [Branding the report](#branding-the-report) |
-| Plain system fonts | The `assets/fonts/` folder is missing or incomplete | Restore `assets/fonts/` from the repository |
+| Plain system fonts | `bundled_fonts` is not set in `brand/brand.json`, or `assets/fonts/` is incomplete | Set it, or restore `assets/fonts/` |
 | `...cannot be loaded because running scripts is disabled` (PowerShell) | Windows execution policy | `powershell -ExecutionPolicy Bypass -File .\Invoke-CyberReadiness.ps1 ...` |
 | `ModuleNotFoundError: requests` | Dependency missing | `pip install requests` |
 | `ModuleNotFoundError: reportlab` | Using `--style classic` | `pip install reportlab` |

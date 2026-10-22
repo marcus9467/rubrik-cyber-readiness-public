@@ -1,6 +1,6 @@
 """Render a scored bundle as an HTML brief and print it to PDF with headless Chrome.
 
-Visual style follows the Rubrik POC technical brief: Host Grotesk and DM Mono, deep teal ink, off-white
+Neutral by default; brand.py applies a local palette, footer, logo and fonts. Reference style: technical brief, off-white
 cards, numbered sections, mono kickers, header and footer on every page. The reportlab renderer in
 render_pdf.py stays available as --style classic.
 
@@ -17,6 +17,7 @@ from datetime import datetime
 from html import escape as esc
 from pathlib import Path
 
+import brand
 import capabilities
 from delta import compute as compute_delta, describe_change
 from frameworks import CSF_NAMES
@@ -44,11 +45,12 @@ def _find_chrome():
 CHROME = _find_chrome()
 ASSETS = Path(__file__).resolve().parent / "assets"
 
-# Tokens sampled from the reference brief.
-INK, MUTED, SOFT = "#09383B", "#706F6E", "#3D5A5C"
-TEAL, PURPLE = "#00958F", "#7B52E0"
-CARD_BG, CARD_LINE, RULE = "#FAF5F1", "#E6DFD9", "#E3DDD7"
-RED, AMBER = "#DA4750", "#E8A317"
+# Palette comes from brand.py: neutral by default, overridden by the local brand/brand.json.
+_P = brand.load()["palette"]
+INK, MUTED, SOFT = _P["ink"], _P["muted"], _P["soft"]
+TEAL, PURPLE = _P["accent"], _P["accent2"]  # names kept; the accent is whatever the brand says
+CARD_BG, CARD_LINE, RULE = _P["card_bg"], _P["card_line"], _P["rule"]
+RED, AMBER = _P["red"], _P["amber"]
 SEV_COLOR = {"critical": RED, "high": RED, "medium": AMBER, "low": MUTED, "info": MUTED}
 
 
@@ -57,6 +59,8 @@ def _b64(path):
 
 
 def _font_faces():
+    if not brand.load()["bundled_fonts"]:
+        return ""
     faces = []
     for family, fname, weight in (("Host Grotesk", "HostGrotesk-Regular.ttf", 400),
                                   ("Host Grotesk", "HostGrotesk-SemiBold.ttf", 600),
@@ -69,11 +73,18 @@ def _font_faces():
     return "\n".join(faces)
 
 
+def _logo_path():
+    for p in (brand.brand_dir() / "logo.svg", ASSETS / "rubrik-logo-primary-linear.svg"):
+        if p.exists():
+            return p
+    return None
+
+
 def logo_status():
     """One line saying whether the report will carry the logo. The logo is supplied locally and may be absent."""
-    p = ASSETS / "rubrik-logo-primary-linear.svg"
-    if not p.exists():
-        return f"logo: not found, using the text mark. To brand the report, add {p}"
+    p = _logo_path()
+    if p is None:
+        return f"logo: not found, using the text mark. To brand the report, add {brand.brand_dir() / 'logo.svg'}"
     try:
         head = p.read_text(errors="replace")[:2000]
     except OSError as e:
@@ -85,8 +96,8 @@ def logo_status():
 
 def _logo_uri():
     """Official linear logo as a data URI with an explicit size (margin boxes use the intrinsic size)."""
-    p = ASSETS / "rubrik-logo-primary-linear.svg"
-    if not p.exists() or "<svg" not in p.read_text(errors="replace")[:2000]:
+    p = _logo_path()
+    if p is None or "<svg" not in p.read_text(errors="replace")[:2000]:
         return None
     svg = p.read_text()
     svg = re.sub(r"<svg ", '<svg width="58" height="24" ', svg, count=1)
@@ -101,31 +112,31 @@ def grade_color(v):
 
 CSS = """
 @page { size: Letter; margin: 0.95in 0.75in 0.9in 0.75in;
-  @top-left { content: __LOGO__; vertical-align: bottom; padding-bottom: 7pt; border-bottom: 0.6pt solid __RULE__; width: 50%; }
-  @top-right { content: "Cyber readiness assessment"; vertical-align: bottom; padding-bottom: 9pt; text-align: right;
-    border-bottom: 0.6pt solid __RULE__; width: 50%; font: 500 6.6pt 'DM Mono', monospace; letter-spacing: .16em;
+  @top-left { content: __LOGO__; vertical-align: bottom; padding-bottom: 7pt; font: 600 10pt __SANS__; color: __INK__; border-bottom: 0.6pt solid __RULE__; width: 50%; }
+  @top-right { content: "__HEADER__"; vertical-align: bottom; padding-bottom: 9pt; text-align: right;
+    border-bottom: 0.6pt solid __RULE__; width: 50%; font: 500 6.6pt __MONO__; letter-spacing: .16em;
     text-transform: uppercase; color: __MUTED__; }
-  @bottom-left { content: "The security and AI operations company  \\00B7  Confidential"; vertical-align: top; padding-top: 9pt;
-    border-top: 0.6pt solid __RULE__; font: 500 6.6pt 'DM Mono', monospace; letter-spacing: .16em;
+  @bottom-left { content: "__FOOTER__"; vertical-align: top; padding-top: 9pt;
+    border-top: 0.6pt solid __RULE__; font: 500 6.6pt __MONO__; letter-spacing: .16em;
     text-transform: uppercase; color: __MUTED__; width: 75%; }
   @bottom-right { content: "Page " counter(page) " of " counter(pages); vertical-align: top; padding-top: 9pt;
-    text-align: right; border-top: 0.6pt solid __RULE__; font: 500 6.6pt 'DM Mono', monospace;
+    text-align: right; border-top: 0.6pt solid __RULE__; font: 500 6.6pt __MONO__;
     letter-spacing: .16em; text-transform: uppercase; color: __MUTED__; }
 }
 *{box-sizing:border-box;}
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-body{margin:0;font-family:'Host Grotesk','Helvetica Neue',Arial,sans-serif;font-weight:400;font-size:9.6pt;
+body{margin:0;font-family:__SANS__;font-weight:400;font-size:9.6pt;
   line-height:1.5;color:__INK__;}
 p{margin:0 0 6pt;} b,strong{font-weight:600;}
 h1{font-size:31pt;line-height:1.06;font-weight:600;margin:4pt 0 8pt;letter-spacing:-.01em;}
 h2{font-size:14.5pt;line-height:1.25;font-weight:600;margin:16pt 0 6pt;break-after:avoid;}
 h3{font-size:10.4pt;line-height:1.3;font-weight:600;margin:11pt 0 4pt;break-after:avoid;}
 .num{color:__TEAL__;}
-.kicker{font:500 7.4pt 'DM Mono',monospace;letter-spacing:.2em;text-transform:uppercase;color:__TEAL__;margin-top:6pt;}
+.kicker{font:500 7.4pt __MONO__;letter-spacing:.2em;text-transform:uppercase;color:__TEAL__;margin-top:6pt;}
 .lede{font-size:12.4pt;line-height:1.42;color:__SOFT__;margin:0 0 4pt;max-width:5.6in;}
 .rule{width:56px;height:3px;background:__TEAL__;margin:12pt 0 4pt;}
 .small{font-size:7.8pt;line-height:1.4;color:__MUTED__;}
-.mono{font-family:'DM Mono',monospace;}
+.mono{font-family:__MONO__;}
 .pb{break-before:page;}
 ul{margin:0 0 7pt;padding-left:13pt;} li{margin:0 0 3pt;}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7pt;margin:10pt 0 4pt;}
@@ -148,36 +159,45 @@ tr{break-inside:avoid;}
 .cap{border:1px solid __LINE__;border-top:4px solid var(--c);border-radius:8px;padding:9pt 11pt;break-inside:avoid;background:#fff;}
 .cap .top{display:flex;justify-content:space-between;align-items:baseline;gap:6pt;}
 .cap .nm{font-weight:600;font-size:10.6pt;}
-.cap .st{font:500 6.2pt 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--c);white-space:nowrap;}
+.cap .st{font:500 6.2pt __MONO__;letter-spacing:.12em;text-transform:uppercase;color:var(--c);white-space:nowrap;}
 .cap .sc{font-size:34pt;line-height:1;font-weight:600;color:var(--c);margin:5pt 0 1pt;}
 .cap .sc small{font-size:9pt;font-weight:400;color:__MUTED__;}
-.cap .q{font:500 6.2pt 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:__MUTED__;margin-top:5pt;}
+.cap .q{font:500 6.2pt __MONO__;letter-spacing:.14em;text-transform:uppercase;color:__MUTED__;margin-top:5pt;}
 .cap .pf{font-size:9pt;font-weight:600;margin:1pt 0 4pt;}
 .cap .ev{font-size:8pt;margin:0 0 3pt;color:__SOFT__;}
 .cap .cons{font-size:8pt;margin:0;color:__INK__;}
 .alarm{border-left:4px solid __RED__;background:#FDF1F2;padding:9pt 13pt;border-radius:0 7px 7px 0;margin:8pt 0;break-inside:avoid;font-size:9.4pt;}
 .alarm b{color:__RED__;}
 .two{break-inside:avoid;display:grid;grid-template-columns:1.25fr 1fr;gap:16pt;align-items:start;}
-.chip{display:inline-block;font:500 6.2pt 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;
+.chip{display:inline-block;font:500 6.2pt __MONO__;letter-spacing:.1em;text-transform:uppercase;
   color:#fff;padding:2pt 0;border-radius:4px;white-space:nowrap;width:44pt;text-align:center;}
 .fh{display:flex;align-items:center;gap:8pt;}
 .fh .t{font-weight:600;font-size:10pt;flex:1;line-height:1.3;}
 .fh .id{color:__TEAL__;}
-.bk{font:500 6.2pt 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:__MUTED__;white-space:nowrap;}
+.bk{font:500 6.2pt __MONO__;letter-spacing:.12em;text-transform:uppercase;color:__MUTED__;white-space:nowrap;}
 .ev{margin:4pt 0 0;font-size:8.8pt;}
-.fix{margin:5pt 0 0;font-size:6.8pt;font:500 6.6pt 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:__TEAL__;}
+.fix{margin:5pt 0 0;font-size:6.8pt;font:500 6.6pt __MONO__;letter-spacing:.14em;text-transform:uppercase;color:__TEAL__;}
 ol.steps{margin:2pt 0 3pt;padding-left:14pt;font-size:8.6pt;} ol.steps li{margin:0 0 2pt;}
 .docs,.fw{font-size:7.4pt;color:__MUTED__;margin:3pt 0 0;} .docs a{color:__TEAL__;text-decoration:none;}
-.fw{font-family:'DM Mono',monospace;font-size:6.6pt;letter-spacing:.04em;}
+.fw{font-family:__MONO__;font-size:6.6pt;letter-spacing:.04em;}
 .phase li{list-style:none;margin:0 0 2pt;} .phase ul{padding-left:0;}
 .id-b{font-weight:600;color:__TEAL__;}
 """
 
 
 def _css(logo):
-    css = CSS.replace("__LOGO__", f'url("{logo}")' if logo else '"Rubrik"')
-    for k, v in (("INK", INK), ("MUTED", MUTED), ("SOFT", SOFT), ("TEAL", TEAL), ("CARD", CARD_BG),
-                 ("LINE", CARD_LINE), ("RULE", RULE), ("RED", RED)):
+    b = brand.load()
+    p = b["palette"]
+    css = CSS.replace("__LOGO__", f'url("{logo}")' if logo else f'"{b["text_mark"]}"')
+    css = css.replace("__FOOTER__", b["footer_left"]).replace("__HEADER__", b["header_right"])
+    if b["bundled_fonts"]:
+        sans, mono = "'Host Grotesk','Helvetica Neue',Arial,sans-serif", "'DM Mono', monospace"
+    else:
+        sans = "'Helvetica Neue',Arial,sans-serif"
+        mono = "ui-monospace,Menlo,Consolas,monospace"
+    css = css.replace("__SANS__", sans).replace("__MONO__", mono)
+    for k, v in (("INK", p["ink"]), ("MUTED", p["muted"]), ("SOFT", p["soft"]), ("TEAL", p["accent"]),
+                 ("CARD", p["card_bg"]), ("LINE", p["card_line"]), ("RULE", p["rule"]), ("RED", p["red"])):
         css = css.replace(f"__{k}__", v)
     return css
 
