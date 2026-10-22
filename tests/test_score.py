@@ -340,7 +340,7 @@ def test_recovery_plan_rules():
 
 
 def test_new_rules_have_remediation_steps():
-    for rid in ("T-3", "T-4", "T-5", "T-6", "T-7", "T-8", "T-9", "RC-1", "RC-2", "RC-3", "R-4", "R-5"):
+    for rid in ("T-3", "T-4", "T-5", "T-6", "T-7", "T-8", "T-9", "RC-1", "RC-2", "RC-3", "R-4", "R-5", "C-5"):
         from remediation import REMEDIATION
         assert REMEDIATION[rid]["steps"], rid
 
@@ -459,3 +459,17 @@ def test_new_alerting_blocks_failing_does_not_unassess_alerting():
     b["data"]["detection"]["webhookRouting"] = {"error": "denied"}
     b["data"]["detection"]["cdmNotifications"] = {"error": "denied"}
     assert dict(domain_rows(score(b), b["data"]))["Alerting"] is not None
+
+
+def test_backup_health_rule_scales_and_stays_silent_when_clean_or_unknown():
+    b = hardened()
+    inv = b["data"]["inventory"]
+    assert "C-5" not in ids(b)  # fixture has no backupHealth: nothing to say
+    inv["backupHealth"] = {"inCompliance": 100, "outOfCompliance": 0, "notAvailable": 5, "empty": 0}
+    assert "C-5" not in ids(b)
+    inv["backupHealth"] = {"inCompliance": 95, "outOfCompliance": 5, "notAvailable": 0, "empty": 0}
+    f = next(x for x in score(b)["findings"] if x["id"] == "C-5")
+    assert f["severity"] == "medium"
+    inv["backupHealth"] = {"inCompliance": 80, "outOfCompliance": 20, "notAvailable": 3, "empty": 1}
+    f = next(x for x in score(b)["findings"] if x["id"] == "C-5")
+    assert f["severity"] == "high" and "4 could not be assessed" in f["evidence"]

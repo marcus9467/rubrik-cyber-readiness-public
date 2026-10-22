@@ -975,6 +975,25 @@ query Vms($after: String) {
     }
 }
 
+function Get-BackupHealth($Client) {
+    # Mirrors collectors/inventory.py _backup_health. Explicit window: the default is the whole protection lifetime.
+    $q = 'query($f: SnappableFilterInput){snappableConnection(first:1, filter:$f){count}}'
+    $n = {
+        param($status)
+        $f = @{ objectState = @('ACTIVE'); protectionStatus = @('Protected'); slaTimeRange = 'PAST_7_DAYS'
+            complianceStatus = @($status)
+        }
+        (Invoke-RscQuery $Client $q @{ f = $f }).snappableConnection.count
+    }
+    return [ordered]@{
+        window          = 'PAST_7_DAYS'
+        inCompliance    = & $n 'IN_COMPLIANCE'
+        outOfCompliance = & $n 'OUT_OF_COMPLIANCE'
+        notAvailable    = & $n 'NOT_AVAILABLE'
+        empty           = & $n 'EMPTY'
+    }
+}
+
 function Get-Reconciliation($Client, $Summary) {
     $q = 'query($f: SnappableFilterInput){snappableConnection(first:1, filter:$f){count}}'
     $n = { param($f) (Invoke-RscQuery $Client $q @{ f = $f }).snappableConnection.count }
@@ -1070,6 +1089,7 @@ query Unprotected($after: String) {
             rows          = $rows.ToArray()
         })
     Set-Prop $s 'vmEnvironment' (Get-VmEnvironment $Client)
+    Set-Prop $s 'backupHealth' (Get-BackupHealth $Client)
     Set-Prop $s 'reconciliation' (Get-Reconciliation $Client $s)
     return $s
 }

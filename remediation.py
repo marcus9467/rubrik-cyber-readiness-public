@@ -206,6 +206,15 @@ REMEDIATION = {
         ],
         "docs": [],
     },
+    "C-5": {
+        "steps": [
+            "In RSC, open the SLA compliance report, filter to Out of Compliance and sort by missed snapshots.",
+            "Check each cause in turn: failed jobs, an SLA frequency the cluster cannot meet, a blackout window, "
+            "or a disconnected host or cluster.",
+            "Re-run the assessment after fixing; the figure covers the past 7 days.",
+        ],
+        "docs": [],
+    },
     "CL-1": {
         "steps": ["Confirm with Rubrik Support whether this cluster can be encrypted at rest, or plan its replacement."],
         "docs": [],
