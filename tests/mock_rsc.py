@@ -25,6 +25,31 @@ USERS = [
 ]
 
 
+# Archive targets: two RCV (one holds the bytes), two in the customer's own cloud, one READ_ONLY mount of another
+# archive, one empty. Names are real-looking so the redaction test can prove none survive.
+ARCHIVE_TARGETS = [
+    {"id": "t-1", "name": "RCV-Backup-acme-philly", "targetType": "RCS_AZURE", "consumedBytes": 2_000_000_000_000,
+     "status": "READ_WRITE"},
+    {"id": "t-2", "name": "RCV-Archive-acme-philly", "targetType": "RCS_AZURE", "consumedBytes": 500_000_000_000,
+     "status": "READ_WRITE"},
+    {"id": "t-3", "name": "AWS:acme-s3-archive", "targetType": "AWS", "consumedBytes": 6_000_000_000_000,
+     "status": "READ_WRITE"},
+    {"id": "t-4", "name": "Azure:acme-blob-archive", "targetType": "AZURE", "consumedBytes": 1_500_000_000_000,
+     "status": "READ_WRITE"},
+    {"id": "t-5", "name": "AWS:acme-s3-readonly-mount", "targetType": "AWS", "consumedBytes": 900_000_000_000,
+     "status": "READ_ONLY"},
+    {"id": "t-6", "name": "GCP:acme-gcs-unused", "targetType": "GOOGLE", "consumedBytes": 0, "status": "READ_WRITE"},
+]
+ENTITLEMENTS = [
+    {"usedCapacity": 2.0, "entitlement": {"capacity": 10, "tier": "BACKUP", "isReplaced": False,
+                                           "expirationDate": "2030-01-12T00:00:00.000Z"}},
+    {"usedCapacity": 0.5, "entitlement": {"capacity": 5, "tier": "ARCHIVE", "isReplaced": False,
+                                           "expirationDate": "2030-01-01T00:00:00.000Z"}},
+    {"usedCapacity": 9.0, "entitlement": {"capacity": 9, "tier": "BACKUP", "isReplaced": True,
+                                           "expirationDate": "2025-01-01T00:00:00.000Z"}},
+]
+
+
 def vm(name, sla, folder="prod-folder", cluster="c-a", tags=None):
     return {"name": name, "isRelic": False, "templateType": "VM",
             "effectiveSlaDomain": {"id": sla, "name": "x"},
@@ -150,6 +175,10 @@ def answer(q, v):
              "earliestMetric": None, "context": {"metrics": [m("b"), m("c")]}},
             {"category": "SECURITY", "value": 55.0, "calculatedAt": "x", "date": "2026-10-17T00:00:00.000Z",
              "earliestMetric": None, "context": None}]}
+    if "rcvAccountEntitlement" in q:
+        return {"rcvAccountEntitlement": {"entitlements": ENTITLEMENTS}}
+    if "targets(" in q and "consumedBytes" in q:
+        return {"targets": PAGE(ARCHIVE_TARGETS)}
     if "slaDomains" in q and "archivalLocationToClusterMapping" in q:
         return {"slaDomains": PAGE([s for s in SLAS])}
     if "slaDomains" in q:

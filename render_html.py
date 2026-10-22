@@ -506,6 +506,90 @@ def estate_summary(data):
             f"Software versions: {esc(vers)}. {rcv}{eos} The full list is in the appendix.</div>")
 
 
+def _tb(v):
+    return f"{v:,.2f} TB" if v >= 0.01 else "under 0.01 TB"
+
+
+def archive_summary(data):
+    """Section 2 block: archive bytes in Rubrik Cloud Vault against archives in the customer's own cloud account,
+    and the RCV entitlement. Empty for a bundle that predates the archive collector."""
+    a = inventory_report.archive_storage(data)
+    if not a:
+        return ""
+    rows = []
+    t = a["targets"]
+    if t:
+        share = "n/a" if t["rcvShare"] is None else f"{t['rcvShare'] * 100:.0f}%"
+        rows.append("<tr><td><b>Rubrik Cloud Vault</b><br><span class='small'>Outside your cloud tenancy</span></td>"
+                    f"<td class='r'>{t['rcv']['count']} ({t['rcv']['inUse']} in use)</td>"
+                    f"<td class='r'><b>{_tb(t['rcv']['tb'])}</b></td><td class='r'>{share}</td></tr>")
+        pct = lambda v: "n/a" if v is None else f"{v * 100:.0f}%"
+        rows.append("<tr><td><b>Archive in your own cloud account</b><br><span class='small'>AWS, Azure and Google "
+                    "Cloud storage you hold</span></td>"
+                    f"<td class='r'>{t['own']['count']} ({t['own']['inUse']} in use)</td>"
+                    f"<td class='r'><b>{_tb(t['own']['tb'])}</b></td><td class='r'>{pct(t['ownShare'])}</td></tr>")
+        if t["other"]["count"]:
+            rows.append("<tr><td><b>Other archive storage</b><br><span class='small'>NFS, tape and S3-compatible "
+                        "targets</span></td>"
+                        f"<td class='r'>{t['other']['count']} ({t['other']['inUse']} in use)</td>"
+                        f"<td class='r'><b>{_tb(t['other']['tb'])}</b></td>"
+                        f"<td class='r'>{pct(t['otherShare'])}</td></tr>")
+        table = ("<table><tr><th>Archive location</th><th class='r'>Targets</th><th class='r'>Stored</th>"
+                 f"<th class='r'>Share</th></tr>{''.join(rows)}</table>")
+        ro = (f"<p class='small'>{t['readOnly']} read-only target{'s' if t['readOnly'] != 1 else ''} mirror"
+              f"{'' if t['readOnly'] != 1 else 's'} another archive and {'are' if t['readOnly'] != 1 else 'is'} "
+              "not counted.</p>") if t["readOnly"] else ""
+    else:
+        table = ("<p>Archive consumption is not known: the archive target query returned no data.</p>")
+        ro = ""
+    e = a["entitlement"]
+    if e and e["capacityTb"]:
+        pct = e["usedTb"] / e["capacityTb"] * 100
+        tiers = "; ".join(f"{k.title()} {_tb(v['usedTb'])} of {v['capacityTb']:,.0f} TB"
+                          for k, v in sorted(e["tiers"].items()))
+        ent = (f"<p><b>RCV entitlement.</b> {_tb(e['usedTb'])} used of {e['capacityTb']:,.0f} TB entitled "
+               f"({pct:.1f}%). {esc(tiers)}.</p>")
+    elif e is not None:
+        ent = "<p><b>RCV entitlement.</b> No active RCV entitlement.</p>"
+    else:
+        ent = "<p><b>RCV entitlement.</b> Not known: the entitlement query returned no data.</p>"
+    why = ('<div class="callout"><b>Why RCV matters.</b> Rubrik Cloud Vault is stored outside your cloud tenancy, so '
+           "the credentials for your own cloud accounts do not reach it. Archives in your own account can be "
+           "reached with those credentials. Deleting RCV data from inside RSC is controlled separately, by "
+           "retention lock and quorum approval (findings S-1 and Q-2).</div>")
+    return ('<h3>Archive storage</h3>' + table + ro + ent + why)
+
+
+def _archive_location(target_type):
+    if target_type in inventory_report.RCV_TYPES:
+        return "Rubrik Cloud Vault"
+    return "Your cloud account" if target_type in inventory_report.CLOUD_TYPES else "Other storage"
+
+
+def _archive_status(r):
+    if r.get("readOnly"):
+        return "Read-only, not counted"
+    return {"READ_WRITE": "Read/write"}.get(r.get("status"), (r.get("status") or "unknown").replace("_", " ").title())
+
+
+def archive_inventory(data):
+    """Appendix table: every archive target with its type, whether it is RCV, status and bytes stored."""
+    a = inventory_report.archive_storage(data)
+    if not a or not a["targets"]:
+        return ""
+    body = "".join(
+        f"<tr><td>{esc(r.get('name') or r.get('id') or '')}</td><td class='mono small'>{esc(r.get('type') or 'unknown')}</td>"
+        f"<td>{esc(_archive_location(r.get('type')))}</td>"
+        f"<td>{esc(_archive_status(r))}</td>"
+        f"<td class='r'>{_tb((r.get('bytes') or 0) / inventory_report.TB)}</td></tr>"
+        for r in a["targets"]["rows"])
+    return ('<h2 class="pb">Appendix. Archive targets</h2>'
+            "<p>Every archive target RSC reports, largest first. Read-only targets mirror another archive and are not "
+            "counted in the totals in Section 2.</p>"
+            "<table><tr><th>Target</th><th>Type</th><th>Location</th><th>Status</th><th class='r'>Stored</th></tr>"
+            f"{body}</table>")
+
+
 def cluster_inventory(data):
     """Appendix table: every cluster with version, status, end-of-support and RCV."""
     rows = inventory_report.cluster_rows(data)
@@ -571,11 +655,13 @@ def build_html(bundle, previous=None):
     caps = result.get("capabilities")
     proj = projections(findings, [d for d, v in rows if v is not None], caps)
     body = [cover(result, rows, ov, findings, proj, collected), prepared_for(result),
-            where_you_stand(result, rows, findings) + estate_summary(bundle["data"]),
+            where_you_stand(result, rows, findings) + estate_summary(bundle["data"])
+            + archive_summary(bundle["data"]),
             do_first(findings), roadmap(findings, rows, caps)]
     if previous is not None:
         body.append(progress(compute_delta(previous, bundle)))
     body.append(cluster_inventory(bundle["data"]))
+    body.append(archive_inventory(bundle["data"]))
     body.append(appendix(result, findings))
     title = f"Cyber Readiness Assessment - {result['customer']}"
     html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{esc(title)}</title>"

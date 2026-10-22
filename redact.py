@@ -123,6 +123,13 @@ def redact_bundle(bundle):
         for t in s.get("replicationTargets", []) or []:
             t["cluster"] = ps("cluster", t.get("cluster"))
 
+    # Archive targets: location names identify sites and business units. Totals are computed from bytes and type.
+    arch = d.get("archive", {})
+    if isinstance(arch.get("targets"), list):
+        for t in arch["targets"]:
+            t["id"] = ps("archive", t.get("id"))
+            t["name"] = ps("archive", t.get("name"))
+
     # Recovery plans: names identify applications and business units.
     for p in d.get("recovery", {}).get("plans", []) or []:
         p["name"] = ps("plan", p.get("name"))
