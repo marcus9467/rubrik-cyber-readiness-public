@@ -373,10 +373,11 @@ Thresholds are guidance values, not Rubrik limits. They are named constants at t
 - **Test/dev detection** matches names such as dev, test, qa, uat and staging. It is a heuristic.
 - **NIST CSF and HIPAA tags** are the author's judgment and have not been reviewed by compliance. They are
   not a statement of compliance.
-- **Edition grouping.** Findings are grouped Fix now, Process, Enterprise Edition, or Edition unconfirmed. A
-  finding is only called Enterprise Edition when `editions.py` marks it confirmed with a source. **None are
-  confirmed today.** Do not present anything in a report as an upgrade benefit until entitlement is checked
-  against the price book.
+- **Editions.** Foundation has no Data Threat Analytics, Business has Anomaly Detection only, and Enterprise
+  has everything: Anomaly Detection, Threat Monitoring, Threat Hunting and Sensitive Data Discovery. The report
+  names the edition that includes each capability on its card and on the findings that close its gaps.
+  Edition is a label only. It never changes a score, a roadmap phase or a bucket, so every tenant is measured
+  against the full standard whatever edition it holds. RSC does not report a tenant's own edition.
 - **Roadmap dates and the projected score** order the work. They are not commitments.
 - **"Not assessed"** means a collector failed or was denied. It is never scored as clean.
 
@@ -580,7 +581,7 @@ python3 tests/run_tests.py
 ```
 
 130 tests, no network and no tenant needed. They cover scoring, redaction (including score parity before and
-after), delta logic, roadmap, edition grouping, framework tags, Tier-0 detection, HTML rendering and Chrome
+after), delta logic, roadmap, edition labels, framework tags, Tier-0 detection, HTML rendering and Chrome
 printing.
 
 The customer runs the PowerShell redactor, so a name that survives there leaks in the one file they send.
@@ -623,7 +624,7 @@ Adding a collector:
 | `tests/mock_rsc.py`, `tests/compare_bundles.py` | Fake RSC and bundle diff for Python/PowerShell parity |
 | `redact.py` | Pseudonymizes a bundle |
 | `score.py` | Rules and scores |
-| `editions.py` | Edition entitlement per finding, with source |
+| `editions.py` | Which edition includes each capability, and which findings close its gaps |
 | `frameworks.py` | NIST CSF and HIPAA tags |
 | `tier0.py` | Likely Tier-0 asset detection |
 | `rbac.py` | Role and permission analysis |

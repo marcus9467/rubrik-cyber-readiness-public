@@ -23,6 +23,7 @@ import inventory_report
 from delta import compute as compute_delta, describe_change
 from frameworks import CSF_NAMES
 from posture import DOMAIN_SOURCES, domain_rows, overall
+from editions import CAPABILITY_EDITION
 from report_text import BUCKET_LABEL, BUCKET_NOTE, METHOD_NOTES, PHASE_TITLE
 from roadmap import csf_rows, plan, projections
 from score import score
@@ -236,6 +237,9 @@ def finding(f, compact=False):
          f'<div class="t"><span class="id">{esc(f["id"])}</span>&nbsp;&nbsp;{esc(f["title"])}</div>'
          f'<div class="bk">{esc(BUCKET_LABEL[f["bucket"]])}</div></div>'
          f'<p class="ev">{esc(f["evidence"])}</p>']
+    ed = (f.get("edition") or {}).get("edition")
+    if ed:
+        h.append(f'<p class="small">{esc(f["edition"]["capability"])} is included in {esc(ed)} Edition and above.</p>')
     if not compact:
         if f.get("steps"):
             h.append('<div class="fix">How to fix</div><ol class="steps">'
@@ -358,6 +362,7 @@ def prepared_for(result):
             f'<span class="st">{esc(capabilities.STATE_LABEL[c["state"]])}</span></div>'
             f'<div class="sc">{area}<small> / 100</small></div>'
             f'<div class="q">Are you prepared for</div><div class="pf">{esc(capabilities.PREPARED_FOR[dom])}?</div>'
+            f'<p class="ev">Included in {esc(CAPABILITY_EDITION[dom])} Edition and above.</p>'
             f'<p class="ev">{esc(c["evidence"])}</p>' + lowered
             + (f'<p class="ev"><b>Why no data:</b> {esc(c["reason"])}</p>' if c.get("reason") else "")
             + ("" if ok else f'<p class="cons">{esc(capabilities.consequence(dom, c["state"]))}</p>') + "</div>")
@@ -367,16 +372,12 @@ def prepared_for(result):
     hunt = result.get("hunt_note")
     if hunt:
         note += (f'<p class="small"><b>Threat hunting (not scored).</b> {esc(hunt)} Threat hunting is an on-demand '
-                 "action and is not scored.</p>")
-    skipped = result.get("not_licensed") or []
-    skip_note = ""
-    if skipped:
-        skip_note = '<p class="small">Not assessed, not part of this licence: ' + esc(", ".join(skipped)) + ".</p>"
+                 f"action, included in {esc(CAPABILITY_EDITION['Threat Hunting'])} Edition and above.</p>")
     intro = (f"<p>{len(caps)} capabilities decide whether your team can see an attack, size it and recover from "
              "it cleanly. Each is scored by what RSC can actually show for your tenant. A capability with no "
              "data scores zero.</p>")
     card_html = '<div class="caps">' + "".join(cards) + "</div>"
-    return '<h2 class="pb"><span class="num">1.</span> Are you prepared?</h2>' + intro + headline + card_html + note + skip_note
+    return '<h2 class="pb"><span class="num">1.</span> Are you prepared?</h2>' + intro + headline + card_html + note
 
 
 def where_you_stand(result, rows, findings):
@@ -386,17 +387,13 @@ def where_you_stand(result, rows, findings):
     s = result["rsc_scores"]
     area = "".join(f'<tr><td><b>{esc(d)}</b></td><td>{bar(v)}</td><td class="r"><b>'
                    f'{"n/a" if v is None else v}</b></td></tr>'
-                   for d, v in rows if d not in set(result.get("not_licensed") or []))
+                   for d, v in rows)
     rsc = ("".join(f'<tr><td>{esc(labels[k])}</td><td class="r"><b>{s[k]:g}</b></td></tr>'
                    for k in labels if k in s)
            if s else '<tr><td class="small">Not available on this tenant.</td></tr>')
-    excluded = set(result.get("not_licensed") or [])
-    unassessed = [d for d, v in rows if v is None and d not in excluded]
+    unassessed = [d for d, v in rows if v is None]
     note = (f'<div class="callout"><b>Not assessed:</b> {esc(", ".join(unassessed))}. Data collection failed '
             "for these areas, so they carry no score.</div>") if unassessed else ""
-    if excluded:
-        note += ('<p class="small">Left out of scoring, not part of this licence: '
-                 + esc(", ".join(sorted(excluded))) + ".</p>")
     top = [f for f in findings if f["severity"] in ("critical", "high")][:3] or findings[:3]
     out = [f'<h2 class="pb"><span class="num">2.</span> Where you stand</h2>',
            f"<p>{len(findings)} findings across {sum(v is not None for _, v in rows)} assessed areas. Scores "
@@ -413,19 +410,13 @@ def where_you_stand(result, rows, findings):
 
 def do_first(findings):
     rows = []
-    for b in ("visibility", "fix_now", "process", "enterprise", "unconfirmed"):
+    for b in ("visibility", "fix_now", "process"):
         items = [f for f in findings if f["bucket"] == b and f["severity"] != "info"]
         if items:
             rows.append(f"<tr><td class='nowrap'><b>{esc(BUCKET_LABEL[b])}</b></td><td class='r'>{len(items)}</td>"
                         f"<td>{esc(BUCKET_NOTE[b])}</td><td class='mono small'>"
                         + esc(", ".join(f["id"] for f in items)) + "</td></tr>")
-    has_unconfirmed = any(f["bucket"] == "unconfirmed" for f in findings)
-    has_ee = any(f["bucket"] == "enterprise" for f in findings)
     note = ""
-    if has_unconfirmed and not has_ee:
-        note = ('<div class="callout"><b>No finding here is presented as an Enterprise Edition benefit.</b> '
-                "Where a capability may depend on licensing, the entitlement has not been confirmed, so the "
-                "finding is grouped as Edition unconfirmed until it is checked.</div>")
     return ("<div class='keep'><h2>What to do first</h2><table><tr><th>Group</th><th class='r'>Count</th>"
             f"<th>Meaning</th><th>Findings</th></tr>{''.join(rows)}</table>{note}</div>")
 
@@ -446,7 +437,7 @@ def roadmap(findings, rows, caps=None):
            "new appears. A detection capability keeps its current score until the finding that closes the gap is "
            "resolved.</p>"]
     p = plan(findings)
-    for key in (30, 60, 90, "decide"):
+    for key in (30, 60, 90):
         if not p[key]:
             continue
         out.append(f'<h3>{esc(PHASE_TITLE[key])} <span class="small">({len(p[key])})</span></h3>'
@@ -647,7 +638,7 @@ def appendix(result, findings):
 
 
 def build_html(bundle, previous=None):
-    result = score(bundle, brand.load()["not_licensed"])
+    result = score(bundle)
     rows = domain_rows(result, bundle["data"])
     ov = overall(rows)
     findings = result["findings"]

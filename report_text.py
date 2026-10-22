@@ -1,26 +1,20 @@
 """Wording shared by the PDF renderers, so the reportlab and HTML reports never drift apart."""
 
-# Report buckets (editions.bucket). "enterprise" only appears for a confirmed entitlement.
 BUCKET_LABEL = {
     "visibility": "Visibility gap",
     "fix_now": "Fix now",
     "process": "Process",
-    "enterprise": "Enterprise Edition",
-    "unconfirmed": "Edition unconfirmed",
 }
 BUCKET_NOTE = {
     "visibility": "A detection capability the tenant cannot see. Without it the team is blind to this class of attack.",
     "fix_now": "Setup or configuration your team can start now.",
     "process": "Needs a runbook, owner or decision.",
-    "enterprise": "Capability requires Enterprise Edition (entitlement confirmed).",
-    "unconfirmed": "Edition not confirmed. Do not present as an upgrade benefit until checked.",
 }
 
 PHASE_TITLE = {
     30: "First 30 days: configuration changes",
     60: "Days 31 to 60: remaining configuration and urgent process work",
     90: "Days 61 to 90: process and runbook work",
-    "decide": "Decide after licensing is settled",
 }
 
 METHOD_NOTES = [

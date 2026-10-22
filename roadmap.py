@@ -4,10 +4,9 @@ Phase rules (author's guidance, not a Rubrik standard):
   30 days  fix_now findings rated critical or high (configuration only, no project needed)
   60 days  remaining fix_now findings, and process findings rated critical or high
   90 days  remaining process findings
-  decide   findings gated on edition (confirmed Enterprise or unconfirmed); no date until licensing is settled
 
 Projected scores assume every finding in the phases up to that point is fully resolved and nothing new
-appears. Edition-gated findings are never assumed fixed, so the projection does not depend on an upgrade.
+appears. Edition has no effect on phase or score: every finding is phased and projected the same way.
 """
 from score import SEVERITY_PENALTY
 
@@ -36,12 +35,12 @@ def phase_of(f):
         return 30 if high else 60
     if b == "process":
         return 60 if high else 90
-    return "decide"
+    return 90
 
 
 def plan(findings):
-    """Findings grouped by phase: {30: [...], 60: [...], 90: [...], 'decide': [...]}."""
-    out = {30: [], 60: [], 90: [], "decide": []}
+    """Findings grouped by phase: {30: [...], 60: [...], 90: [...]}."""
+    out = {30: [], 60: [], 90: []}
     for f in findings:
         p = phase_of(f)
         if p is not None:

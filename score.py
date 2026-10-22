@@ -2,9 +2,8 @@
 
 Rules live here as plain functions (no YAML dependency). Each returns a finding dict or None.
 `tag` says where the fix lives:
-  fix_now      configurable today on the current edition
+  fix_now      configurable today
   visibility   a detection capability the tenant cannot see (scored 0 to 100 in capabilities.py)
-  ee_candidate capability that may depend on edition; confirm licensing before showing a customer
   process      people / runbook gap
 Thresholds marked GUIDANCE are judgment calls, not Rubrik-published limits.
 """
@@ -692,14 +691,7 @@ RULES = [
 ]
 
 
-# Rules that belong to one detection capability. A capability the customer is not licensed for is left out entirely.
-CAPABILITY_RULES = {"Threat Monitoring": {"V-2", "T-1", "T-10", "T-11"}, "Anomaly Detection": {"V-1", "T-3"},
-                    "Sensitive Data Discovery": {"V-4", "T-2"}}
-
-
-def score(bundle, not_licensed=()):
-    """not_licensed: capability names (see capabilities.DOMAINS) to leave out of findings, scores and the cards."""
-    not_licensed = {n for n in not_licensed if n in CAPABILITY_RULES}
+def score(bundle):
     data = dict(bundle["data"])
     data["_status"] = bundle["status"]  # the capability rules need to tell "collector failed" from "never ran"
     findings, skipped = [], []
@@ -710,8 +702,6 @@ def score(bundle, not_licensed=()):
                 findings.append(f)
         except Exception as e:  # a rule must never sink the report
             skipped.append({"rule": rule.__name__, "error": str(e)[:200]})
-    drop = set().union(*(CAPABILITY_RULES[n] for n in not_licensed)) if not_licensed else set()
-    findings = [f for f in findings if f["id"] not in drop]
     findings.sort(key=lambda f: (SEVERITY_ORDER.index(f["severity"]), f["id"]))
 
     domains = {}
@@ -721,9 +711,6 @@ def score(bundle, not_licensed=()):
     # The three detection capabilities are scored by what the tenant can see, and a capability with no data is a 0,
     # not an unscored gap. Findings in the same area can only pull the score lower.
     caps = capabilities.compute(data, bundle["status"])
-    for n in not_licensed:
-        caps.pop(n, None)
-        scores.pop(n, None)
     for dom, c in caps.items():
         if c["score"] is not None:
             scores[dom] = min(c["score"], scores.get(dom, 100))
@@ -738,7 +725,6 @@ def score(bundle, not_licensed=()):
         "hunt_note": capabilities.hunt_note(data, bundle["status"]),
         "counts": {s: sum(f["severity"] == s for f in findings) for s in SEVERITY_ORDER},
         "skipped_rules": skipped,
-        "not_licensed": sorted(not_licensed),
         "rsc_scores": {k: v["value"] for k, v in data.get("dhrc", {}).get("scores", {}).items()},
     }
 
