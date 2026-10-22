@@ -184,15 +184,10 @@ def monitoring(data, status):
         if cloud:
             parts.append(f"{sum(r['threatMonitoringEnabled'] for r in cloud)} of "
                          f"{sum(r['total'] for r in cloud)} cloud and SaaS accounts")
-    objs = threat.get("objects")
-    if isinstance(objs, dict) and not _is_stub(objs) and objs.get("supportedObjects"):
-        en, sup = objs["enabledObjects"], objs["supportedObjects"]
-        shares.append(min(1.0, en / sup))
-        parts.append(f"{en:,} of {sup:,} workload objects"
-                     + (" (RSC reports more enabled than supported, so this is counted as complete)"
-                        if en > sup else ""))
+    # threatMonitoringObjectEnablementStats is deliberately not scored: its enabled count can exceed its supported
+    # count (tenant-wide, unexplained), so any share built from it would be a guess.
     if not shares:
-        return _result(dom, "blind", None, "Threat monitoring is not reporting on any account or object.",
+        return _result(dom, "blind", None, "Threat monitoring is not reporting on any account.",
                        NOTHING_LISTED)
     share = sum(shares) / len(shares)
     return _result(dom, _classify(share), share, "Threat monitoring is on for " + "; ".join(parts) + ".")

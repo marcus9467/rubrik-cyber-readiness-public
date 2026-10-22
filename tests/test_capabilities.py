@@ -80,13 +80,13 @@ def test_threat_hunting_states():
     assert stub["state"] == "blind" and stub["score"] == 0
 
 
-def test_threat_monitoring_combines_accounts_and_objects_and_caps_over_100():
+def test_threat_monitoring_scores_clusters_and_accounts_and_ignores_object_stats():
     roots = {"AWS_NATIVE_ACCOUNT": {"total": 4, "threatMonitoringEnabled": 2},
              "CDM_CLUSTER": {"total": 4, "threatMonitoringEnabled": 2}}
     c = compute(data(roots=roots, objects={"enabledObjects": 3018, "supportedObjects": 2808}), OK)["Threat Monitoring"]
-    assert c["state"] == "partial" and c["score"] == 75  # (4 of 8 roots = 0.5, + 1.0 objects) / 2
+    assert c["state"] == "partial" and c["score"] == 50  # 4 of 8 roots; the object stats do not move it
     assert "2 of 4 Rubrik clusters; 2 of 4 cloud and SaaS accounts" in c["evidence"]
-    assert "more enabled than supported" in c["evidence"]
+    assert "workload objects" not in c["evidence"]
 
 
 def test_partial_state_gets_its_own_consequence_and_off_keeps_the_full_one():
