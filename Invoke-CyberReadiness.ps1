@@ -549,8 +549,60 @@ query Stats($begin: DateTime!) {
   threatMonitoringObjectEnablementStats(beginTime: $begin) { enabledObjects supportedObjects }
 }
 '@
+    # allEnablementItems(type: CDM_CLUSTER) always returns []. The per-cluster flag is Cluster.lambdaConfig, which is
+    # null for a cluster RSC cannot reach. Keep in step with collectors/threat.py cdm_root.
+    $cdmQ = @'
+query CdmThreat($after: String) {
+  clusterConnection(after: $after, first: 200) {
+    nodes {
+      id name status isHealthy productType
+      lambdaConfig {
+        isThreatMonitoringEnabled isThreatMonitoringEnabledForActiveDirectory
+        isSmartScanningEnabled enableThreatMonitoringFullScan orionYaraRemoteProcessingEnabled
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+'@
     $out = [ordered]@{ roots = [ordered]@{} }
     foreach ($t in $rootTypes) {
+        if ($t -eq 'CDM_CLUSTER') {
+            try {
+                # Do not pipe Invoke-RscPaginate: it returns the array wrapped, so a pipe sees one item.
+                $all = Invoke-RscPaginate $Client $cdmQ 'clusterConnection'
+                $nodes = @($all | Where-Object { $_.productType -eq 'CDM' })
+                $items = @(); $notAssessed = @()
+                foreach ($c in $nodes) {
+                    $cfg = $c.lambdaConfig
+                    if ($null -eq $cfg) {
+                        $notAssessed += [ordered]@{ id = $c.id; name = $c.name; status = $c.status }
+                        continue
+                    }
+                    $items += [ordered]@{
+                        id = $c.id; name = $c.name; isHealthy = [bool]$c.isHealthy
+                        threatMonitoringEnabled    = [bool]$cfg.isThreatMonitoringEnabled
+                        dataThreatAnalyticsEnabled = $false
+                        isYaraProcessingEnabled    = [bool]$cfg.orionYaraRemoteProcessingEnabled
+                        activeDirectoryEnabled     = [bool]$cfg.isThreatMonitoringEnabledForActiveDirectory
+                        smartScanningEnabled       = [bool]$cfg.isSmartScanningEnabled
+                        fullScanEnabled            = [bool]$cfg.enableThreatMonitoringFullScan
+                    }
+                }
+                $out.roots[$t] = [ordered]@{
+                    total                      = $items.Count
+                    threatMonitoringEnabled    = @($items | Where-Object { $_.threatMonitoringEnabled }).Count
+                    dataThreatAnalyticsEnabled = 0
+                    unhealthy                  = @($items | Where-Object { -not $_.isHealthy }).Count
+                    activeDirectoryEnabled     = @($items | Where-Object { $_.activeDirectoryEnabled }).Count
+                    smartScanningEnabled       = @($items | Where-Object { $_.smartScanningEnabled }).Count
+                    notAssessed                = $notAssessed
+                    items                      = $items
+                }
+            }
+            catch { $out.roots[$t] = [ordered]@{ error = (Get-Short $_.Exception.Message) } }
+            continue
+        }
         try {
             $items = @(Get-List (Invoke-RscQuery $Client $enableQ @{ type = $t }).threatAnalyticsEnablement.allEnablementItems)
             $out.roots[$t] = [ordered]@{

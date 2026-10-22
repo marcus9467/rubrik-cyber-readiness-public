@@ -230,9 +230,23 @@ REMEDIATION = {
     "T-1": {
         "steps": [
             "Confirm Threat Monitoring is covered by the current license before planning the rollout.",
-            "Enable it on the listed accounts and subscriptions.",
+            "Enable it on the listed clusters, accounts and subscriptions.",
         ],
         "docs": [("Threat Monitoring", f"{D}/saas/threat_monitoring.html")],
+    },
+    "T-10": {
+        "steps": [
+            "Check why the cluster is not reporting. A disconnected cluster returns no settings to RSC.",
+            "Once it reconnects, open its threat monitoring settings in RSC and confirm they are on.",
+        ],
+        "docs": [],
+    },
+    "T-11": {
+        "steps": [
+            "Open the threat monitoring settings for each cluster that has it on.",
+            "Turn on extended file scan coverage, or full scan, where the extra scan time is acceptable.",
+        ],
+        "docs": [],
     },
     "T-2": {
         "steps": [

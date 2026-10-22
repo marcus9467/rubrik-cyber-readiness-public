@@ -45,6 +45,10 @@ def sample():
     b["data"]["inventory"]["vmEnvironment"]["unprotectedNonProd"] = [
         {"name": "acme-test-vm", "cluster": "acme-philly-01", "signals": [["vmName", "acme-test-vm"]]}]
     b["data"]["threat"]["roots"]["AWS_NATIVE_ACCOUNT"]["items"] = [{"id": "123456789012", "name": "ACME Prod"}]
+    b["data"]["threat"]["roots"]["CDM_CLUSTER"] = {
+        "total": 1, "threatMonitoringEnabled": 1,
+        "items": [{"id": "c-1", "name": "acme-philly-01", "threatMonitoringEnabled": True}],
+        "notAssessed": [{"id": "c-2", "name": "acme-nyc-01", "status": "Disconnected"}]}
     b["data"]["access"]["lockout"] = {"error": "HTTP 400 host vcenter.acme.example denied"}
     b["data"]["offsite"] = {"slas": [
         {"name": "Acme-Offsite-Gold", "archiveTargets": [{"name": "acme-glacier-vault"}],
@@ -89,6 +93,16 @@ def test_same_value_maps_to_same_pseudonym_and_map_reverses():
     assert red["data"]["inventory"]["vmEnvironment"]["unprotectedNonProd"][0]["cluster"] == row["clusterName"]
     assert "obj:acme-epic-db01" in mapping["map"]
     assert mapping["map"]["obj:acme-epic-db01"] == row["name"]
+
+
+def test_cdm_threat_clusters_share_pseudonyms_with_the_clusters_section():
+    red, mapping = redact_bundle(sample())
+    root = red["data"]["threat"]["roots"]["CDM_CLUSTER"]
+    assert root["items"][0]["name"] == red["data"]["clusters"]["clusters"][0]["name"]
+    assert root["items"][0]["id"] == red["data"]["clusters"]["clusters"][0]["id"]
+    assert "cluster:acme-nyc-01" in mapping["map"]
+    assert root["notAssessed"][0]["name"] == mapping["map"]["cluster:acme-nyc-01"]
+    assert root["notAssessed"][0]["status"] == "Disconnected"  # status is not identifying, so it survives
 
 
 def test_two_runs_use_different_salts():

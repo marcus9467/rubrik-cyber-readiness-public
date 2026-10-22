@@ -189,6 +189,15 @@ def answer(q, v):
             {"groupId": "g-1", "groupName": "acme-backup-admins", "domainName": "okta.acme.example",
              "roles": [{"id": "r-2", "name": "Administrator"}], "users": [{"id": "u-1", "domain": "SSO"}] * 4},
             {"groupId": "g-2", "groupName": "none", "domainName": "okta.acme.example", "roles": None, "users": None}])}
+    if "clusterConnection" in q and "lambdaConfig" in q:
+        cfg = {"isThreatMonitoringEnabled": True, "isThreatMonitoringEnabledForActiveDirectory": True,
+               "isSmartScanningEnabled": False, "enableThreatMonitoringFullScan": False,
+               "orionYaraRemoteProcessingEnabled": False}
+        # nyc-01 is disconnected, so RSC returns no lambdaConfig for it.
+        return {"clusterConnection": PAGE([
+            {"id": c["id"], "name": c["name"], "status": c["status"], "isHealthy": c["isHealthy"],
+             "productType": c["productType"], "lambdaConfig": cfg if c["status"] == "Connected" else None}
+            for c in CLUSTERS])}
     if "clusterConnection" in q and "isHealthy" in q:
         return {"clusterConnection": PAGE(CLUSTERS)}
     if "clusterConnection" in q:

@@ -129,18 +129,19 @@ def monitoring(data, status):
     if st == "error" or not isinstance(threat, dict) or _is_stub(threat):
         return _result(dom, "blind", None, "RSC returned no threat monitoring data.")
     shares, parts = [], []
-    # Same roots as rule T-1: cloud and SaaS accounts. On-prem clusters are measured by object below.
-    roots = [r for n, r in (threat.get("roots") or {}).items()
-             if n != "CDM_CLUSTER" and isinstance(r, dict) and not _is_stub(r) and r.get("total")]
+    # Same roots as rule T-1: Rubrik clusters plus cloud and SaaS accounts. Clusters RSC could not read are not in
+    # the total (see notAssessed), so a disconnected cluster is neither credited nor counted as off.
+    roots = [r for r in (threat.get("roots") or {}).values()
+             if isinstance(r, dict) and not _is_stub(r) and r.get("total")]
     if roots:
         en, tot = sum(r["threatMonitoringEnabled"] for r in roots), sum(r["total"] for r in roots)
         shares.append(min(1.0, en / tot))
-        parts.append(f"{en} of {tot} cloud and SaaS accounts")
+        parts.append(f"{en} of {tot} clusters, cloud accounts and SaaS accounts")
     objs = threat.get("objects")
     if isinstance(objs, dict) and not _is_stub(objs) and objs.get("supportedObjects"):
         en, sup = objs["enabledObjects"], objs["supportedObjects"]
         shares.append(min(1.0, en / sup))
-        parts.append(f"{en:,} of {sup:,} on-prem objects"
+        parts.append(f"{en:,} of {sup:,} workload objects"
                      + (" (RSC reports more enabled than supported, so this is counted as complete)"
                         if en > sup else ""))
     if not shares:

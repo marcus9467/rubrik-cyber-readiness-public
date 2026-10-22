@@ -120,16 +120,54 @@ def test_retention_lock_severity_scales():
     assert next(f for f in score(b)["findings"] if f["id"] == "S-1")["severity"] == "medium"
 
 
-def test_threat_ignores_cdm_and_empty_and_error_roots():
+def test_threat_ignores_empty_and_error_roots():
     b = hardened()
     b["data"]["threat"]["roots"] = {
-        "CDM_CLUSTER": {"total": 3, "threatMonitoringEnabled": 0},
+        "CDM_CLUSTER": {"total": 0, "threatMonitoringEnabled": 0},
         "GCP_NATIVE_PROJECT": {"total": 0, "threatMonitoringEnabled": 0},
         "M365_SUBSCRIPTION": {"error": "x"},
     }
     assert "T-1" not in ids(b)
     b["data"]["threat"]["roots"]["AWS_NATIVE_ACCOUNT"] = {"total": 4, "threatMonitoringEnabled": 1}
     assert "T-1" in ids(b)
+
+
+def cdm_item(name, tm=True, smart=False, full=False):
+    return {"id": name, "name": name, "isHealthy": True, "threatMonitoringEnabled": tm,
+            "smartScanningEnabled": smart, "fullScanEnabled": full}
+
+
+def test_t1_counts_cdm_clusters_with_threat_monitoring_off():
+    b = hardened()
+    items = [cdm_item("a"), cdm_item("b", tm=False)]
+    b["data"]["threat"]["roots"] = {"CDM_CLUSTER": {"total": 2, "threatMonitoringEnabled": 1, "items": items,
+                                                    "notAssessed": []}}
+    f = next(f for f in score(b)["findings"] if f["id"] == "T-1")
+    assert "Rubrik clusters: 1 of 2" in f["evidence"]
+
+
+def test_t10_reports_cdm_clusters_rsc_could_not_read_and_t1_does_not():
+    b = hardened()
+    na = [{"id": "c-b", "name": "nyc-01", "status": "Disconnected"}]
+    b["data"]["threat"]["roots"] = {"CDM_CLUSTER": {"total": 1, "threatMonitoringEnabled": 1,
+                                                    "items": [cdm_item("a", smart=True)], "notAssessed": na}}
+    found = ids(b)
+    assert "T-10" in found and "T-1" not in found
+    assert "1 of 2 clusters" in next(f for f in score(b)["findings"] if f["id"] == "T-10")["evidence"]
+
+
+def test_t11_fires_only_when_a_monitored_cluster_has_default_scan_depth():
+    b = hardened()
+    roots = {"CDM_CLUSTER": {"total": 2, "threatMonitoringEnabled": 2, "notAssessed": [],
+                             "items": [cdm_item("a", smart=True), cdm_item("b", full=True)]}}
+    b["data"]["threat"]["roots"] = roots
+    assert "T-11" not in ids(b)
+    roots["CDM_CLUSTER"]["items"].append(cdm_item("c"))
+    roots["CDM_CLUSTER"]["total"] = roots["CDM_CLUSTER"]["threatMonitoringEnabled"] = 3
+    assert "T-11" in ids(b)
+    roots["CDM_CLUSTER"]["items"] = [cdm_item("d", tm=False)]  # off clusters are T-1's job, not T-11's
+    roots["CDM_CLUSTER"]["threatMonitoringEnabled"] = 0
+    assert "T-11" not in ids(b)
 
 
 def test_rule_exception_is_recorded_and_other_rules_still_run():

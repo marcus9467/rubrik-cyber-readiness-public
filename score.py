@@ -444,15 +444,42 @@ def t_threat_monitoring(d):
         return None
     gaps = []
     for name, r in roots.items():
-        if "error" in r or r["total"] == 0 or name == "CDM_CLUSTER":
+        if "error" in r or r["total"] == 0:
             continue
         if r["threatMonitoringEnabled"] < r["total"]:
-            gaps.append(f"{name}: {r['threatMonitoringEnabled']} of {r['total']}")
+            label = "Rubrik clusters" if name == "CDM_CLUSTER" else name
+            gaps.append(f"{label}: {r['threatMonitoringEnabled']} of {r['total']}")
     if not gaps:
         return None
     return _f("T-1", "Threat Monitoring", "medium", "Threat monitoring not enabled everywhere",
               "Enabled roots: " + "; ".join(gaps) + ".",
-              "Enable threat monitoring on the remaining accounts and subscriptions.", "visibility")
+              "Enable threat monitoring on the remaining clusters, accounts and subscriptions.", "visibility")
+
+
+def t_cdm_not_assessed(d):
+    r = d.get("threat", {}).get("roots", {}).get("CDM_CLUSTER")
+    if not isinstance(r, dict) or "error" in r or not r.get("notAssessed"):
+        return None
+    na = r["notAssessed"]
+    # Counts only: evidence text must read the same before and after redaction. Names are in the bundle.
+    return _f("T-10", "Threat Monitoring", "info", "Cluster threat monitoring status not reported",
+              f"RSC returned no threat monitoring settings for {len(na)} of {len(na) + r['total']} clusters, "
+              "usually because they are disconnected.",
+              "Reconnect the cluster, then confirm threat monitoring is enabled.", "process")
+
+
+def t_cdm_smart_scan(d):
+    r = d.get("threat", {}).get("roots", {}).get("CDM_CLUSTER")
+    if not isinstance(r, dict) or "error" in r or not r.get("threatMonitoringEnabled"):
+        return None
+    on = [i for i in r["items"] if i["threatMonitoringEnabled"]]
+    off = [i for i in on if not i["smartScanningEnabled"] and not i["fullScanEnabled"]]
+    if not off:
+        return None
+    return _f("T-11", "Threat Monitoring", "low", "Cluster threat monitoring runs at default scan depth",
+              f"{len(off)} of {len(on)} clusters with threat monitoring have neither extended file scan coverage "
+              "nor full scan on, so only the default file extensions are scanned.",
+              "Turn on extended file scan coverage where scan time allows.", "visibility")
 
 
 def t_open_sensitive(d):
@@ -659,7 +686,8 @@ RULES = [
     a_allowlist, a_lockout, a_no_sso, a_password,
     r_admin_share, r_admin_service_accounts, r_admin_without_totp, r_custom_admin_roles, r_sso_admin_groups,
     s_retention_lock, s_immutable_archive, c_unprotected, c_nonprod, c_partial, c_tier0, c_backup_health,
-    cl_encryption, cl_tunnel, cl_tpr_unknown, t_threat_monitoring, t_open_sensitive,
+    cl_encryption, cl_tunnel, cl_tpr_unknown, t_threat_monitoring, t_cdm_not_assessed, t_cdm_smart_scan,
+    t_open_sensitive,
     t_anomaly_alerts, t_event_forwarding, t_webhooks_failing,
     t_email_unused, t_template_missing_eventinfo, t_critical_only, t_cdm_silent,
     rc_no_plans, rc_never_run, rc_last_failed,
@@ -669,7 +697,7 @@ RULES = [
 
 
 # Rules that belong to one detection capability. A capability the customer is not licensed for is left out entirely.
-CAPABILITY_RULES = {"Threat Monitoring": {"V-2", "T-1"}, "Anomaly Detection": {"V-1", "T-3"},
+CAPABILITY_RULES = {"Threat Monitoring": {"V-2", "T-1", "T-10", "T-11"}, "Anomaly Detection": {"V-1", "T-3"},
                     "Threat Hunting": {"V-3"}, "Sensitive Data Discovery": {"V-4", "T-2"}}
 
 

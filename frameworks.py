@@ -65,6 +65,8 @@ MAP = {
     "T-7": ("DE", [H_AUDIT, H_REVIEW]),
     "T-8": ("DE", [H_REVIEW]),
     "T-9": ("DE", [H_AUDIT, H_REVIEW]),
+    "T-10": ("DE", [H_REVIEW]),
+    "T-11": ("DE", [H_REVIEW]),
     "V-1": ("DE", [H_REVIEW, H_INCIDENT]),
     "V-2": ("DE", [H_REVIEW, H_INCIDENT]),
     "V-3": ("RS", [H_INCIDENT]),
