@@ -132,11 +132,9 @@ def test_t2_exposure_is_not_labelled_a_visibility_gap():
     assert find(b, "T-2")["bucket"] == "process"
 
 
-def test_no_visibility_text_names_an_edition():
+def test_visibility_findings_name_the_edition_that_closes_the_gap():
     b = bundle()
     for k in ("threat", "dhrc"):
         b["status"][k] = "error: denied"
-    for f in score(b)["findings"]:
-        if f["id"].startswith("V-"):
-            text = " ".join([f["title"], f["evidence"], f["remediation"]] + f["steps"][1:])
-            assert "Enterprise" not in text and "Business Edition" not in text, f["id"]
+    got = {f["id"]: f["edition"]["edition"] for f in score(b)["findings"] if f["id"].startswith("V-")}
+    assert got == {"V-1": "Business", "V-2": "Enterprise", "V-4": "Enterprise"}

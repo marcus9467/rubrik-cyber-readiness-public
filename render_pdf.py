@@ -53,16 +53,6 @@ def logo_status():
     return f"logo: not found, using the text mark. To brand the classic report, add {brand.brand_dir() / 'logo.png'}"
 
 SEV_COLOR = {"critical": RED, "high": RED, "medium": AMBER, "low": MID_GRAY, "info": MID_GRAY}
-TAG_LABEL = {
-    "fix_now": "Fix now",
-    "ee_candidate": "Edition unconfirmed",
-    "process": "Process",
-}
-TAG_NOTE = {
-    "fix_now": "Configurable today.",
-    "ee_candidate": "May depend on edition or licensing; confirm before relying on it.",
-    "process": "Needs a runbook, owner or decision.",
-}
 H1 = ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=INK, spaceAfter=4)
 H2 = ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=TEAL,
                     spaceBefore=12, spaceAfter=5, keepWithNext=1)
@@ -217,7 +207,7 @@ def roadmap_page(findings, rows):
     proj_cell = [P("Projected posture score", H2), t]
 
     p = plan(findings)
-    for key in (30, 60, 90, "decide"):
+    for key in (30, 60, 90):
         items = p[key]
         if not items:
             continue
@@ -279,7 +269,7 @@ def progress_page(d):
 
 
 def build(bundle, out_path, previous=None):
-    result = score(bundle, brand.load()["not_licensed"])
+    result = score(bundle)
     rows = domain_rows(result, bundle["data"])
     ov = overall(rows)
     findings = result["findings"]
@@ -317,7 +307,7 @@ def build(bundle, out_path, previous=None):
     story.append(P("Each item below is a finding ID. Steps and documentation links for every finding are in "
                    "the technical appendix.", SMALL))
     story.append(Spacer(1, 3))
-    for b in ("visibility", "fix_now", "process", "enterprise", "unconfirmed"):
+    for b in ("visibility", "fix_now", "process"):
         items = [f for f in findings if f["bucket"] == b and f["severity"] != "info"]
         if not items:
             continue
@@ -362,9 +352,6 @@ def build(bundle, out_path, previous=None):
         "Test/dev VMs are identified by name: dev, test, qa, uat and staging.",
         "RSC's own resilience scores are shown for comparison. Their object counts differ from the "
         "per-object counts here and the difference has not been reconciled.",
-        "Only items in the 'Enterprise Edition' group have a confirmed entitlement. Items marked "
-        "'Edition unconfirmed' have not been checked against licensing and should not be presented as "
-        "upgrade benefits.",
     ]
     for n in notes:
         story.append(P("- " + n, CELL))

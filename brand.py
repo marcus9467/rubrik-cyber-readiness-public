@@ -26,7 +26,6 @@ DEFAULTS = {
     "text_mark": "Cyber Readiness",
     "author": "",
     "bundled_fonts": False,
-    "not_licensed": [],
 }
 HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -63,7 +62,4 @@ def load():
         if k in raw:
             out[k] = _text(raw[k], DEFAULTS[k])
     out["bundled_fonts"] = raw.get("bundled_fonts") is True
-    nl = raw.get("not_licensed")
-    if isinstance(nl, list):
-        out["not_licensed"] = [x for x in nl if isinstance(x, str)]
     return out

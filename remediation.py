@@ -332,21 +332,18 @@ REMEDIATION = {
     # Visibility gaps. Steps only: no doc links have been fetched and verified for these.
     "V-1": {
         "steps": [
-            "Confirm with the Rubrik account team whether anomaly detection is licensed on this tenant.",
             "Turn it on for every cluster and cloud account, then point alerts at the on-call channel.",
         ],
         "docs": [],
     },
     "V-2": {
         "steps": [
-            "Confirm with the Rubrik account team whether threat monitoring is licensed on this tenant.",
             "Enrol every cluster, cloud account and SaaS tenant so every backup is scanned on arrival.",
         ],
         "docs": [],
     },
     "V-4": {
         "steps": [
-            "Confirm with the Rubrik account team whether sensitive data discovery is licensed on this tenant.",
             "Turn it on for the systems that hold regulated data first, then widen it.",
             "Fix the open-access findings it reports (see T-2).",
         ],

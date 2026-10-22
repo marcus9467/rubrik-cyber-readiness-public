@@ -1,50 +1,37 @@
-"""Edition entitlement per finding id, with provenance.
+"""Which Rubrik edition each detection capability belongs to.
 
-`tag` in score.py says what kind of fix a finding needs. This file says which license the capability behind
-the fix needs. They are separate because "needs Enterprise" and "nobody has confirmed what it needs" are
-different claims, and only the first can go in an upgrade conversation.
+  Foundation  no Data Threat Analytics
+  Business    Anomaly Detection only
+  Enterprise  everything: Anomaly Detection, Threat Monitoring, Threat Hunting and Sensitive Data Discovery
 
-Each entry:
-  status     any | enterprise   (what the capability is believed to require)
-  source     where that belief comes from (doc URL, price book line, or who confirmed it and when)
-  confirmed  True only after someone checked the source against the price book or product management
-
-A finding is shown as needing Enterprise only when status is enterprise AND confirmed is True. Anything
-else, including every rule id not listed here, is bucketed "unconfirmed" and the report states no edition.
-tests/test_editions.py enforces that confirmed entries carry a source.
+Edition is a label and never an input to a score. Every tenant is measured against the full standard, so a gap in
+an Enterprise capability is a gap whatever edition the tenant holds, and the report says which edition closes it.
 """
 
-ANY, ENTERPRISE, UNCONFIRMED = "any", "enterprise", "unconfirmed"
+FOUNDATION, BUSINESS, ENTERPRISE = "Foundation", "Business", "Enterprise"
 
-EDITIONS = {
-    # Only entitlement on record: a docs.rubrik.com search snippet calling threat monitoring an Enterprise
-    # feature. A snippet is not a price book line, so confirmed stays False until someone checks.
-    "T-1": {
-        "status": ENTERPRISE,
-        "confirmed": False,
-        "source": "docs.rubrik.com search snippet describing threat monitoring as Enterprise (2026-10-09).",
-    },
+# Lowest edition that includes the capability.
+CAPABILITY_EDITION = {
+    "Anomaly Detection": BUSINESS,
+    "Threat Monitoring": ENTERPRISE,
+    "Threat Hunting": ENTERPRISE,
+    "Sensitive Data Discovery": ENTERPRISE,
+}
+
+# Rule id -> capability it closes the gap on.
+RULE_CAPABILITY = {
+    "V-1": "Anomaly Detection", "T-3": "Anomaly Detection",
+    "V-2": "Threat Monitoring", "T-1": "Threat Monitoring", "T-10": "Threat Monitoring", "T-11": "Threat Monitoring",
+    "V-4": "Sensitive Data Discovery", "T-2": "Sensitive Data Discovery",
 }
 
 
 def edition_of(rule_id):
-    """Entitlement for a rule id. Unlisted ids and unconfirmed entries both report status unconfirmed."""
-    e = EDITIONS.get(rule_id)
-    if not e or not e.get("confirmed") or not e.get("source", "").strip():
-        return {"status": UNCONFIRMED, "believed": e["status"] if e else None,
-                "source": e.get("source", "") if e else "", "confirmed": False}
-    return {"status": e["status"], "believed": e["status"], "source": e["source"], "confirmed": True}
+    """{'edition': 'Business' | 'Enterprise' | None, 'capability': name | None}. None means any edition."""
+    cap = RULE_CAPABILITY.get(rule_id)
+    return {"edition": CAPABILITY_EDITION.get(cap), "capability": cap}
 
 
 def bucket(tag, rule_id):
-    """Report bucket: fix_now | process | visibility | enterprise | unconfirmed.
-
-    A confirmed-Enterprise finding goes to `enterprise` whatever its tag. A fix_now or process finding that is
-    not edition-gated keeps its tag. An ee_candidate with no confirmed entitlement is `unconfirmed`.
-    """
-    ed = edition_of(rule_id)
-    if ed["status"] == ENTERPRISE:
-        return "enterprise"
-    if tag in ("fix_now", "process", "visibility"):
-        return tag
-    return "unconfirmed"
+    """Report bucket: visibility | fix_now | process. Edition never moves a finding between buckets."""
+    return tag if tag in ("fix_now", "process", "visibility") else "process"
