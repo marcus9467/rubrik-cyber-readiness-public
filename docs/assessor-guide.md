@@ -114,7 +114,7 @@ It is not confirmed to cover every query in this toolkit. Preflight tells you if
 Your Rubrik contact will give you the toolkit as a zip or repository access.
 
 ```
-cd rubrik-cyber-readiness
+cd rubrik-cyber-readiness-public
 ```
 
 Python only: `pip install requests`. PowerShell needs nothing more.
