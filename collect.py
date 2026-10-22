@@ -8,13 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rsc_client import RscClient
-from collectors import access, clusters, detection, dhrc, identity, inventory, mfa, offsite, quorum, recovery, sla, threat
+from collectors import (access, archive, clusters, detection, dhrc, identity, inventory, mfa, offsite, quorum,
+                        recovery, sla, threat)
 
 COLLECTORS = {
     "identity": identity, "mfa": mfa, "quorum": quorum,
     "inventory": inventory, "dhrc": dhrc, "sla": sla, "access": access,
     "clusters": clusters, "threat": threat, "detection": detection, "recovery": recovery,
-    "offsite": offsite,
+    "offsite": offsite, "archive": archive,
 }
 
 

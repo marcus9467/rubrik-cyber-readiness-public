@@ -99,3 +99,72 @@ def summary(data):
         "notToRcv": sum(not r["toRcv"] for r in rows) if known else None,
         "eosUnknown": sum(not r["eos"]["known"] for r in rows),
     }
+
+
+# ----------------------------------------------------------------------------------------------------------
+# Archive storage: Rubrik Cloud Vault (outside the customer's cloud tenancy) against archives in their own account.
+# ----------------------------------------------------------------------------------------------------------
+
+TB = 1e12  # decimal, the unit RSC uses for RCV entitlements
+# Targets in the customer's own cloud account. Every other non-RCV type (NFS, TAPE, S3_COMPATIBLE, anything new) is
+# reported as other storage, because the report cannot say that an NFS or tape target is in a cloud account.
+CLOUD_TYPES = {"AWS", "AZURE", "GOOGLE", "GLACIER", "AWS_SECRET_REGION_DCA", "AWS_SECRET_REGION_LCK"}
+
+
+def _ok(section):
+    return isinstance(section, dict) and "error" not in section
+
+
+def archive_storage(data, now=None):
+    """Archive consumption split into RCV and the customer's own cloud, plus the RCV entitlement, or None when the
+    archive section is absent (an older bundle). A part RSC could not read is None inside the result, never 0.
+
+    READ_ONLY targets mirror another cluster's archive, so they are listed but never added to a total."""
+    from datetime import datetime, timezone
+    sec = data.get("archive")
+    if not isinstance(sec, dict):
+        return None
+    now = now or datetime.now(timezone.utc)
+    out = {"targets": None, "entitlement": None}
+
+    t = sec.get("targets")
+    if isinstance(t, list):
+        live = [x for x in t if not x.get("readOnly")]
+        rcv = [x for x in live if x.get("type") in RCV_TYPES]
+        own = [x for x in live if x.get("type") in CLOUD_TYPES]
+        other = [x for x in live if x.get("type") not in RCV_TYPES and x.get("type") not in CLOUD_TYPES]
+        rcv_b, own_b = sum(x.get("bytes") or 0 for x in rcv), sum(x.get("bytes") or 0 for x in own)
+        other_b = sum(x.get("bytes") or 0 for x in other)
+        total = rcv_b + own_b + other_b
+        out["targets"] = {
+            "rcv": {"count": len(rcv), "inUse": sum(bool(x.get("bytes")) for x in rcv), "tb": rcv_b / TB},
+            "own": {"count": len(own), "inUse": sum(bool(x.get("bytes")) for x in own), "tb": own_b / TB},
+            "other": {"count": len(other), "inUse": sum(bool(x.get("bytes")) for x in other), "tb": other_b / TB},
+            "total": total / TB,
+            "rcvShare": (rcv_b / total) if total else None,
+            "ownShare": (own_b / total) if total else None,
+            "otherShare": (other_b / total) if total else None,
+            "readOnly": sum(bool(x.get("readOnly")) for x in t),
+            "rows": sorted(t, key=lambda x: -(x.get("bytes") or 0)),
+        }
+
+    e = sec.get("entitlements")
+    if isinstance(e, list):
+        tiers = {}
+        for x in e:
+            exp = x.get("expires")
+            expired = False
+            if exp:
+                try:
+                    expired = datetime.fromisoformat(exp.replace("Z", "+00:00")) < now
+                except ValueError:
+                    expired = False
+            if x.get("replaced") or expired:
+                continue
+            row = tiers.setdefault(x.get("tier") or "UNKNOWN", {"capacityTb": 0.0, "usedTb": 0.0})
+            row["capacityTb"] += x.get("capacityTb") or 0
+            row["usedTb"] += x.get("usedTb") or 0
+        out["entitlement"] = {"tiers": tiers,
+                              "capacityTb": sum(v["capacityTb"] for v in tiers.values()),
+                              "usedTb": sum(v["usedTb"] for v in tiers.values())}
+    return out

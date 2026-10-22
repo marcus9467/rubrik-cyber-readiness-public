@@ -872,6 +872,46 @@ query Plans($after: String) {
     }
 }
 
+function Get-RcArchive($Client) {
+    # Archive targets (bytes stored per location) and the RCV entitlement. The two queries fail separately.
+    $targetsQ = @'
+query Targets($after: String) {
+  targets(after: $after, first: 200) {
+    count
+    nodes { id name targetType consumedBytes status }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+'@
+    $entQ = @'
+query {
+  rcvAccountEntitlement {
+    entitlements {
+      usedCapacity
+      entitlement { capacity tier isReplaced expirationDate }
+    }
+  }
+}
+'@
+    try {
+        $nodes = Invoke-RscPaginate $Client $targetsQ 'targets'
+        $targets = @(foreach ($n in $nodes) {
+                [ordered]@{ id = $n.id; name = $n.name; type = $n.targetType; bytes = $n.consumedBytes
+                            status = $n.status; readOnly = ($n.status -eq 'READ_ONLY') }
+            })
+    }
+    catch { $targets = [ordered]@{ error = (Get-Short $_.Exception.Message) } }
+    try {
+        $rows = (Invoke-RscQuery $Client $entQ).rcvAccountEntitlement.entitlements
+        $ent = @(foreach ($r in (Get-List $rows)) {
+                [ordered]@{ tier = $r.entitlement.tier; capacityTb = $r.entitlement.capacity; usedTb = $r.usedCapacity
+                            replaced = [bool]$r.entitlement.isReplaced; expires = $r.entitlement.expirationDate }
+            })
+    }
+    catch { $ent = [ordered]@{ error = (Get-Short $_.Exception.Message) } }
+    return [ordered]@{ targets = $targets; entitlements = $ent }
+}
+
 function Get-RcOffsite($Client) {
     $q = @'
 query Offsite($after: String) {
@@ -1183,6 +1223,7 @@ $script:Collectors = [ordered]@{
     detection = { param($c) Get-RcDetection $c }
     recovery  = { param($c) Get-RcRecovery $c }
     offsite   = { param($c) Get-RcOffsite $c }
+    archive   = { param($c) Get-RcArchive $c }
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1311,6 +1352,15 @@ function Protect-Bundle($Bundle) {
             if (Test-Prop $t 'clusterId') { Protect-Field $ps $t 'clusterId' 'cluster' }
         }
         foreach ($t in (Get-List (Get-Prop $s 'replicationTargets'))) { Protect-Field $ps $t 'cluster' 'cluster' }
+    }
+
+    # Archive targets: location names identify sites and business units. Totals are computed from bytes and type.
+    $archTargets = Get-Prop (& $sect 'archive') 'targets'
+    if ($archTargets -is [array]) {
+        foreach ($t in $archTargets) {
+            Protect-Field $ps $t 'id' 'archive'
+            Protect-Field $ps $t 'name' 'archive'
+        }
     }
 
     # Recovery plans: names identify applications and business units.
