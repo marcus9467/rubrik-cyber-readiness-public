@@ -112,6 +112,11 @@ def answer(q, v):
                                                   "platformCoverage": [cov("VMWARE", 6, 9), cov("CLOUD", 4, 11)]}}
     if "snappableConnection(first:1" in q:
         f = v["f"]
+        if "slaDomain" in f:  # per-SLA active, protected count (offsite collector)
+            sid = f["slaDomain"]["id"][0]
+            if sid == "s-bad":
+                raise PermissionError("count denied")
+            return {"snappableConnection": {"count": {"s-1": 25, "s-2": 12}.get(sid, 0)}}
         n = {("ACTIVE",): 100, ("RELIC",): 7, ("ARCHIVED",): 3}.get(tuple(f["objectState"]), 0)
         if "complianceStatus" in f:
             return {"snappableConnection": {"count": {"IN_COMPLIANCE": 70, "OUT_OF_COMPLIANCE": 6,

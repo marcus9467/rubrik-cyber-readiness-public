@@ -581,15 +581,23 @@ def _offsite(d, rule_id, key, known_key, title, what, fix):
         return None
     share = o[key] / o[known_key]
     sev = "high" if share >= OFFSITE_HIGH else "medium" if share >= OFFSITE_MEDIUM else "low"
-    snap = d.get("inventory", {}).get("reconciliation", {}).get("snappables") or {}
-    extra = (snap.get("relic") or 0) + (snap.get("archived") or 0)
+    active = o.get("basis") == "active-protected"
+    fell_back = o.get("fallbackSlas") or 0
     note = ""
-    if extra and snap.get("activeProtected"):
-        note = (f" RSC counts every object record under an SLA, including relic and archived records. This "
-                f"tenant has {snap['activeProtected']:,} active protected objects and {extra:,} relic or "
-                f"archived records, so the share among active workloads may differ.")
+    if not active:
+        # Older bundle: the count is RSC's per-SLA record count, which includes relic and archived records.
+        snap = d.get("inventory", {}).get("reconciliation", {}).get("snappables") or {}
+        extra = (snap.get("relic") or 0) + (snap.get("archived") or 0)
+        if extra and snap.get("activeProtected"):
+            note = (f" This bundle counts every object record under an SLA, including relic and archived "
+                    f"records: the tenant has {snap['activeProtected']:,} active protected objects and "
+                    f"{extra:,} relic or archived records, so the share among active workloads may differ.")
+    elif fell_back:
+        note = (f" For {fell_back} SLAs the active count could not be read, so their record count (which includes "
+                f"relic and archived records) was used instead.")
+    what_objects = "active protected objects" if active and not fell_back else "object records"
     return _f(rule_id, "Recovery", sev, title,
-              f"{o[key]} of {o[known_key]} object records ({share:.0%}) {what} "
+              f"{o[key]} of {o[known_key]} {what_objects} ({share:.0%}) {what} "
               f"(object records, not distinct workloads).{note}",
               fix, "fix_now")
 

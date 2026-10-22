@@ -847,8 +847,17 @@ query Offsite($after: String) {
     # True / False only when RSC returned the spec list; $null means unknown and is never a gap.
     $flag = { param($specs) if ($null -eq $specs) { $null } else { [bool](Test-Any $specs) } }
     $per = New-Object System.Collections.Generic.List[object]
+    $fallback = 0
+    $countQ = 'query($f: SnappableFilterInput){snappableConnection(first:1, filter:$f){count}}'
     foreach ($s in $real) {
-        $n = $s.protectedObjectCount
+        $records = $s.protectedObjectCount
+        if (-not $records) { continue }
+        # Active, protected objects only. protectedObjectCount also counts relic and archived records.
+        try {
+            $f = @{ slaDomain = @{ id = @([string]$s.id) }; objectState = @('ACTIVE'); protectionStatus = @('Protected') }
+            $n = (Invoke-RscQuery $Client $countQ @{ f = $f }).snappableConnection.count
+        }
+        catch { $n = $records; $fallback++ }
         if (-not $n) { continue }
         $archive = @(foreach ($a in (Get-List $s.archivalSpecs)) {
                 foreach ($m in (Get-List $a.archivalLocationToClusterMapping)) {
@@ -861,13 +870,16 @@ query Offsite($after: String) {
                 [ordered]@{ cluster = $r.cluster.name; type = $r.targetMapping.targetType }
             })
         $per.Add([ordered]@{
-                name = $s.name; objects = $n
+                name = $s.name; objects = $n; recordCount = $records
                 replication = (& $flag $s.replicationSpecsV2); archival = (& $flag $s.archivalSpecs)
                 replicationTargets = $repl; archiveTargets = $archive; frequency = $s.baseFrequency
             })
     }
     $objs = { param($pred) Get-Sum ($per | Where-Object { & $pred $_ } | ForEach-Object { $_['objects'] }) }
     return [ordered]@{
+        basis                   = 'active-protected'
+        fallbackSlas            = $fallback
+        recordCount             = Get-Sum ($per | ForEach-Object { $_['recordCount'] })
         slasInUse               = $per.Count
         objects                 = & $objs { $true }
         objectsReplicationKnown = & $objs { param($p) $null -ne $p['replication'] }
