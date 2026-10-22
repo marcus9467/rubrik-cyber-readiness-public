@@ -111,21 +111,6 @@ TB = 1e12  # decimal, the unit RSC uses for RCV entitlements
 CLOUD_TYPES = {"AWS", "AZURE", "GOOGLE", "GLACIER", "AWS_SECRET_REGION_DCA", "AWS_SECRET_REGION_LCK"}
 
 
-def rcv_immutability(target):
-    """blob | container | none | not_reported for one archive target, by RSC's own fields.
-
-    blob       version-level (blob) immutability is on: the current mechanism, held for the SLA retention period
-    container  no blob immutability but a lock period is set: the older container-level mechanism, deprecated
-    none       neither: snapshots in the location can be altered or deleted
-    not_reported  RSC exposes no immutability field for this target (RCV on AWS or GCP, or an older bundle)
-    """
-    if target.get("type") not in RCV_TYPES or target.get("blobImmutable") is None:
-        return "not_reported"
-    if target["blobImmutable"]:
-        return "blob"
-    return "container" if (target.get("lockDays") or 0) > 0 else "none"
-
-
 def _ok(section):
     return isinstance(section, dict) and "error" not in section
 
@@ -160,8 +145,6 @@ def archive_storage(data, now=None):
             "ownShare": (own_b / total) if total else None,
             "otherShare": (other_b / total) if total else None,
             "readOnly": sum(bool(x.get("readOnly")) for x in t),
-            "rcvImmutability": {k: sum(rcv_immutability(x) == k for x in rcv)
-                                for k in ("blob", "container", "none", "not_reported")},
             "rows": sorted(t, key=lambda x: -(x.get("bytes") or 0)),
         }
 
