@@ -23,6 +23,16 @@ query Stats($begin: DateTime!) {
 }
 """
 
+# Objects Threat Monitoring has scanned. The three buckets sum to threatMonitoringObjectEnablementStats.enabledObjects on
+# the lab tenant, so that figure is the whole object universe and not a count of objects with the feature on.
+SCAN_Q = """
+query ThreatScan($b: DateTime!) {
+  threatMonitoringObjects(beginTime: $b) { objectsWithThreats objectsWithoutThreats unscannedObjects }
+}
+"""
+SCAN_WINDOW_DAYS = 30  # fixed so reports from different runs compare
+
+
 # allEnablementItems(type: CDM_CLUSTER) always returns [] (it is documented for cloud-native accounts). The
 # per-cluster flag lives on Cluster.lambdaConfig. lambdaConfig is null for a cluster RSC cannot reach.
 CDM_Q = """
@@ -96,4 +106,11 @@ def collect(client):
         out["objects"] = client.query(OBJECT_STATS_Q, {"begin": begin})["threatMonitoringObjectEnablementStats"]
     except Exception as e:
         out["objects"] = {"error": str(e)[:300]}
+    try:
+        begin = (datetime.now(timezone.utc) - timedelta(days=SCAN_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        s = client.query(SCAN_Q, {"b": begin})["threatMonitoringObjects"]
+        out["scan"] = {"withThreats": s["objectsWithThreats"], "withoutThreats": s["objectsWithoutThreats"],
+                       "unscanned": s["unscannedObjects"], "windowDays": SCAN_WINDOW_DAYS}
+    except Exception as e:
+        out["scan"] = {"error": str(e)[:300]}
     return out

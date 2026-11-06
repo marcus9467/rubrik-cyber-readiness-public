@@ -250,6 +250,23 @@ def answer(q, v):
         items = {"AWS_NATIVE_ACCOUNT": [{"id": "123456789012", "name": "ACME Prod", "isHealthy": True,
                  "threatMonitoringEnabled": True, "dataThreatAnalyticsEnabled": False, "isYaraProcessingEnabled": False}]}
         return {"threatAnalyticsEnablement": {"allEnablementItems": items.get(t, [])}}
+    if "ransomwareInvestigationEnablement" in q:
+        return {"ransomwareInvestigationEnablement": {
+            "awsAccounts": [{"enabled": True, "isHealthy": True}, {"enabled": True, "isHealthy": True}],
+            "azureSubscriptions": [{"enabled": False, "isHealthy": True}],
+            "gcpProjects": None,
+            "microsoft365Subscriptions": [{"enabled": True}],
+            "rubrikCloudVaultLocations": [], "cloudDirectClusters": [{"enabled": False}]}}
+    if "dataDiscoveryObjectsCount" in q:
+        return {"dataDiscoveryObjectsCount": {"dataDiscoveryAssignedCount": 30, "dataDiscoveryNotAssignedCount": 10,
+                                               "dataDiscoveryNotSupportedCount": 0}}
+    if "anomaliesObjects" in q:
+        return {"anomalyDetectionObjectEnablementStats": {"enabledObjects": 100},
+                "anomaliesObjects": {"objectsWithAnomalies": 5, "objectsWithResolvedAnomalies": 1,
+                                     "objectsWithoutAnomalies": 24, "unscannedObjects": 70}}
+    if "threatMonitoringObjects(" in q:
+        return {"threatMonitoringObjects": {"objectsWithThreats": 2, "objectsWithoutThreats": 38,
+                                            "unscannedObjects": 60}}
     if "threatMonitoringObjectEnablementStats" in q:
         return {"threatMonitoringObjectEnablementStats": {"enabledObjects": 5, "supportedObjects": 50}}
     if "lambdaSettings" in q:

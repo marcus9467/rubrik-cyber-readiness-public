@@ -437,9 +437,14 @@ def cl_tpr_unknown(d):
               "Confirm cluster-level quorum settings directly on each cluster.", "process")
 
 
+def _unlicensed(d, domain):
+    """True when the assessor marked the capability not licensed. Its findings stand down: the fix is a purchase."""
+    return domain in (d.get("_not_licensed") or ())
+
+
 def t_threat_monitoring(d):
     roots = d.get("threat", {}).get("roots")
-    if not roots:
+    if not roots or _unlicensed(d, "Threat Monitoring"):
         return None
     gaps = []
     for name, r in roots.items():
@@ -457,7 +462,7 @@ def t_threat_monitoring(d):
 
 def t_cdm_not_assessed(d):
     r = d.get("threat", {}).get("roots", {}).get("CDM_CLUSTER")
-    if not isinstance(r, dict) or "error" in r or not r.get("notAssessed"):
+    if not isinstance(r, dict) or "error" in r or not r.get("notAssessed") or _unlicensed(d, "Threat Monitoring"):
         return None
     na = r["notAssessed"]
     # Counts only: evidence text must read the same before and after redaction. Names are in the bundle.
@@ -469,7 +474,8 @@ def t_cdm_not_assessed(d):
 
 def t_cdm_smart_scan(d):
     r = d.get("threat", {}).get("roots", {}).get("CDM_CLUSTER")
-    if not isinstance(r, dict) or "error" in r or not r.get("threatMonitoringEnabled"):
+    if (not isinstance(r, dict) or "error" in r or not r.get("threatMonitoringEnabled")
+            or _unlicensed(d, "Threat Monitoring")):
         return None
     on = [i for i in r["items"] if i["threatMonitoringEnabled"]]
     off = [i for i in on if not i["smartScanningEnabled"] and not i["fullScanEnabled"]]
@@ -483,7 +489,7 @@ def t_cdm_smart_scan(d):
 
 def t_open_sensitive(d):
     sc = d.get("dhrc", {}).get("scores", {}).get("SENSITIVE_DATA")
-    if not sc:
+    if not sc or _unlicensed(d, "Sensitive Data Discovery"):
         return None
     m = next((x for x in sc["metrics"] if x["metric"] == "OPEN_ACCESS_SENSITIVE_FILES"), None)
     if not m or not m["value"]:
@@ -651,7 +657,8 @@ def rp_single_copy(d):
 
 def _visibility(d, domain, rule_id, remediation):
     c = capabilities.compute(d, d.get("_status"))[domain]
-    if c["state"] in ("active", "not_collected"):
+    # not_licensed raises no finding: the answer is a purchase, which the card already says.
+    if c["state"] in ("active", "not_collected", "not_licensed", *capabilities.UNSCORED_SHOWN):
         return None
     dark = c["state"] in ("blind", "off")
     title = capabilities.GAP_TITLE[domain][0 if dark else 1]
@@ -691,9 +698,13 @@ RULES = [
 ]
 
 
-def score(bundle):
+def score(bundle, not_licensed=(), confirmed_active=()):
+    """not_licensed: capability names (capabilities.LICENSE_ALIASES values) the customer does not license.
+    confirmed_active: capability names the assessor confirms are on everywhere. Both are the assessor's word."""
     data = dict(bundle["data"])
     data["_status"] = bundle["status"]  # the capability rules need to tell "collector failed" from "never ran"
+    data["_not_licensed"] = tuple(not_licensed)
+    data["_confirmed_active"] = tuple(confirmed_active)
     findings, skipped = [], []
     for rule in RULES:
         try:
@@ -710,7 +721,7 @@ def score(bundle):
     scores = {dom: max(0, 100 - sum(SEVERITY_PENALTY[f["severity"]] for f in fs)) for dom, fs in domains.items()}
     # The three detection capabilities are scored by what the tenant can see, and a capability with no data is a 0,
     # not an unscored gap. Findings in the same area can only pull the score lower.
-    caps = capabilities.compute(data, bundle["status"])
+    caps = capabilities.compute(data, bundle["status"], not_licensed, confirmed_active)
     for dom, c in caps.items():
         if c["score"] is not None:
             scores[dom] = min(c["score"], scores.get(dom, 100))

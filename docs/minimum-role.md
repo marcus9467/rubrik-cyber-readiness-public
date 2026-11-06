@@ -32,6 +32,7 @@ permission names, not something I verified.
 | clusters | VIEW_CLUSTER, VIEW_CDM_SYS_CONFIG |
 | threat, dhrc | VIEW_ANOMALY_DETECTION_RESULTS, VIEW_THREAT_HUNT_RESULTS, VIEW_DATA_SECURITY_POSTURE_RESULTS, VIEW_DATA_CLASS_GLOBAL, VIEW_FEATURE_ENABLEMENT, VIEW_DASHBOARD |
 | detection | **Unknown.** See below. |
+| recovery | **Unknown.** Not run with a narrow role. A role without recovery plan access gets "Not entitled to access this resource" (seen on a live assessment); the collector tags it `NOT_ENTITLED` and the area is "not assessed". Read-only Administrator has not been confirmed to include it. |
 
 ## Alerting queries (permissions not identified)
 

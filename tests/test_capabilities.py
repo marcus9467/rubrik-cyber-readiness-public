@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from capabilities import ceilings, compute, hunt_note  # noqa: E402
+from capabilities import ceilings, compute, hunt_note, summary  # noqa: E402
 
 OK = {"dhrc": "ok", "threat": "ok", "detection": "ok"}
 
@@ -57,6 +57,50 @@ def test_partial_scores_the_coverage_and_is_never_100_or_0():
     assert c["state"] == "partial" and c["score"] == 89
     assert 1 <= compute(data(ad=(1, 1000)), OK)["Anomaly Detection"]["score"] <= 99
     assert compute(data(ad=(999, 1000)), OK)["Anomaly Detection"]["score"] == 99
+
+
+def test_score_with_no_cluster_metrics_is_unverified_not_blind_and_not_scored():
+    # RSC returned the bucket score but withheld every per-cluster metric (seen on a live tenant). The bucket reports
+    # detections, not enablement, so it must not be read as "on" and must not be scored 0 either.
+    d = data()
+    d["dhrc"]["scores"]["ANOMALIES_DETECTED"] = {"value": 100, "metrics": []}
+    d["dhrc"]["scores"]["SENSITIVE_DATA"] = {"value": 100, "metrics": []}
+    caps = compute(d, OK)
+    for dom in ("Anomaly Detection", "Sensitive Data Discovery"):
+        assert caps[dom]["state"] == "unverified" and caps[dom]["score"] is None
+        assert caps[dom]["reason"]
+    assert ceilings(caps) == {}
+
+
+def test_bucket_missing_entirely_is_still_blind():
+    d = data()
+    d["dhrc"]["scores"].pop("ANOMALIES_DETECTED")
+    assert compute(d, OK)["Anomaly Detection"]["state"] == "blind"
+
+
+def test_not_licensed_scores_zero_and_counts_and_wins_over_the_data():
+    caps = compute(data(sdd=(9, 9)), OK, not_licensed=["Sensitive Data Discovery"])
+    c = caps["Sensitive Data Discovery"]
+    assert c["state"] == "not_licensed" and c["score"] == 0
+    assert caps["Anomaly Detection"]["state"] == "active"
+    assert "Sensitive Data Discovery" in summary(caps)["not_licensed"]
+
+
+def test_confirmed_active_scores_100_and_says_it_is_the_assessor():
+    d = data()
+    d["dhrc"]["scores"]["ANOMALIES_DETECTED"] = {"value": 100, "metrics": []}
+    c = compute(d, OK, confirmed_active=["Anomaly Detection"])["Anomaly Detection"]
+    assert c["state"] == "active" and c["score"] == 100 and c["source"] == "assessor"
+    assert "Confirmed" in c["evidence"]
+
+
+def test_assessor_flags_default_to_the_data_keys_so_rules_agree_with_the_report():
+    d = data(sdd=(0, 9))
+    d["_not_licensed"] = ("Sensitive Data Discovery",)
+    d["_confirmed_active"] = ("Anomaly Detection",)
+    caps = compute(d, OK)
+    assert caps["Sensitive Data Discovery"]["state"] == "not_licensed"
+    assert caps["Anomaly Detection"]["source"] == "assessor"
 
 
 def test_old_bundle_without_the_collector_is_not_collected_not_blind():
@@ -135,3 +179,117 @@ def test_ceilings_name_the_findings_that_lift_them():
     assert c["Anomaly Detection"] == (0, ("V-1",))
     assert c["Threat Monitoring"] == (50, ("V-2", "T-1"))
     assert "Threat Hunting" not in c
+
+
+def _no_ad_metric(**det):
+    """Live-tenant shape: the cluster health score came back with no per-cluster Anomaly Detection metric."""
+    d = data(detection={"settings": {}, "hunts": {"total": 0, "last90": 0, "latest": None}, **det})
+    d["dhrc"]["scores"].pop("ANOMALIES_DETECTED")
+    return d
+
+
+def _re(*pairs):
+    return {"ransomwareEnablement": {"roots": {k: {"total": t, "enabled": e} for k, t, e in pairs}}}
+
+
+def test_anomaly_falls_back_to_account_enablement_when_the_cluster_metric_is_missing():
+    d = _no_ad_metric(**_re(("awsAccounts", 4, 2)))
+    d["threat"]["roots"].pop("CDM_CLUSTER", None)
+    c = compute(d, OK)["Anomaly Detection"]
+    assert c["state"] == "partial" and c["score"] == 50 and c["source"] == "enablement"
+
+
+def test_anomaly_full_cloud_coverage_is_active_only_when_there_are_no_rubrik_clusters():
+    d = _no_ad_metric(**_re(("awsAccounts", 2, 2), ("microsoft365Subscriptions", 1, 1)))
+    d["threat"]["roots"].pop("CDM_CLUSTER", None)
+    assert compute(d, OK)["Anomaly Detection"]["state"] == "active"
+
+
+def test_anomaly_full_cloud_coverage_with_rubrik_clusters_is_unverified_not_active():
+    d = _no_ad_metric(**_re(("awsAccounts", 2, 2)))
+    d["threat"]["roots"]["CDM_CLUSTER"] = {"total": 3, "threatMonitoringEnabled": 3, "notAssessed": []}
+    c = compute(d, OK)["Anomaly Detection"]
+    assert c["state"] == "unverified" and c["score"] is None
+
+
+def test_anomaly_with_no_enablement_data_keeps_the_original_reading():
+    d = _no_ad_metric()
+    assert compute(d, OK)["Anomaly Detection"]["state"] == "blind"
+    d = _no_ad_metric(ransomwareEnablement={"error": "denied"})
+    assert compute(d, OK)["Anomaly Detection"]["state"] == "blind"
+
+
+def test_cluster_metric_wins_over_enablement_when_present():
+    d = data(ad=(0, 9), detection={"settings": {}, "hunts": {}, **_re(("awsAccounts", 2, 2))})
+    assert compute(d, OK)["Anomaly Detection"]["state"] == "off"
+
+
+def test_sensitive_data_positive_count_lifts_a_blind_reading():
+    d = data(detection={"settings": {}, "hunts": {}, "dataDiscovery": {"assigned": 30, "notAssigned": 10}})
+    d["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    c = compute(d, OK)["Sensitive Data Discovery"]
+    assert c["state"] == "partial" and c["score"] == 75 and c["source"] == "enablement"
+
+
+def test_sensitive_data_zero_policies_is_off_not_blind_and_never_a_license_claim():
+    d = data(detection={"settings": {}, "hunts": {}, "dataDiscovery": {"assigned": 0, "notAssigned": 40}})
+    d["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    c = compute(d, OK)["Sensitive Data Discovery"]
+    assert c["state"] == "off" and c["score"] == 0 and c["state"] != "not_licensed"
+    assert "No Data Discovery policy" in c["evidence"]
+
+
+def test_sensitive_data_with_no_objects_at_all_stays_blind():
+    d = data(detection={"settings": {}, "hunts": {}, "dataDiscovery": {"assigned": 0, "notAssigned": 0}})
+    d["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    assert compute(d, OK)["Sensitive Data Discovery"]["state"] == "blind"
+
+
+def _scan(with_=5, resolved=1, without=24, unscanned=70):
+    return {"anomalyScan": {"enabled": with_ + resolved + without + unscanned, "withAnomalies": with_,
+                            "resolved": resolved, "withoutAnomalies": without, "unscanned": unscanned}}
+
+
+def test_anomaly_scan_share_is_the_primary_and_beats_a_cluster_setting_that_says_on():
+    d = data(ad=(9, 9), detection={"settings": {}, "hunts": {}, **_scan()})
+    c = compute(d, OK)["Anomaly Detection"]
+    assert c["state"] == "partial" and c["score"] == 30 and c["source"] == "scan"
+    assert "30 of 100" in c["evidence"]
+
+
+def test_anomaly_scan_counts_resolved_objects_as_scanned():
+    c = compute(data(detection={"settings": {}, "hunts": {}, **_scan(0, 10, 0, 0)}), OK)["Anomaly Detection"]
+    assert c["state"] == "active" and c["score"] == 100
+
+
+def test_anomaly_nothing_scanned_is_off_and_never_not_licensed():
+    c = compute(data(detection={"settings": {}, "hunts": {}, **_scan(0, 0, 0, 50)}), OK)["Anomaly Detection"]
+    assert c["state"] == "off" and c["score"] == 0
+
+
+def test_anomaly_scan_error_stub_or_empty_universe_falls_back_to_the_older_signals():
+    for bad in ({"error": "denied"}, _scan(0, 0, 0, 0)["anomalyScan"]):
+        d = data(ad=(0, 9), detection={"settings": {}, "hunts": {}, "anomalyScan": bad})
+        assert compute(d, OK)["Anomaly Detection"]["state"] == "off"
+
+
+def test_threat_monitoring_scan_is_only_a_fallback_when_no_root_could_be_read():
+    scan = {"withThreats": 2, "withoutThreats": 38, "unscanned": 60}
+    d = data(roots={})
+    d["threat"]["scan"] = scan
+    c = compute(d, OK)["Threat Monitoring"]
+    assert c["state"] == "partial" and c["score"] == 40 and c["source"] == "scan"
+    d = data()  # a readable root wins, the scan does not override it
+    d["threat"]["scan"] = scan
+    c = compute(d, OK)["Threat Monitoring"]
+    assert c["state"] == "active" and c.get("source") != "scan"
+
+
+def test_threat_monitoring_scan_share_is_evidence_and_never_changes_the_per_root_score():
+    d = data()
+    d["threat"]["scan"] = {"withThreats": 2, "withoutThreats": 38, "unscanned": 60}
+    c = compute(d, OK)["Threat Monitoring"]
+    assert c["state"] == "active" and c["score"] == 100
+    assert "scanned 40 of 100 objects (40%)" in c["evidence"]
+    d["threat"]["scan"] = {"error": "denied"}
+    assert "scanned" not in compute(d, OK)["Threat Monitoring"]["evidence"]

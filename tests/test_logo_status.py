@@ -6,14 +6,22 @@ import render_html  # noqa: E402
 
 
 def with_logo(tmp, content):
-    old = render_html.ASSETS
+    import os
+    import tempfile
+    old, old_env = render_html.ASSETS, os.environ.get("CRR_BRAND_DIR")
     render_html.ASSETS = tmp
+    # An empty brand dir, so a logo installed on this machine cannot leak into the result.
+    os.environ["CRR_BRAND_DIR"] = tempfile.mkdtemp()
     if content is not None:
         (tmp / "rubrik-logo-primary-linear.svg").write_text(content)
     try:
         return render_html.logo_status(), render_html._logo_uri()
     finally:
         render_html.ASSETS = old
+        if old_env is None:
+            os.environ.pop("CRR_BRAND_DIR", None)
+        else:
+            os.environ["CRR_BRAND_DIR"] = old_env
 
 
 def test_missing_logo_says_so_and_falls_back():

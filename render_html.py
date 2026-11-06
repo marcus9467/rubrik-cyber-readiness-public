@@ -102,7 +102,13 @@ def _logo_uri():
     if p is None or "<svg" not in p.read_text(errors="replace")[:2000]:
         return None
     svg = p.read_text()
-    svg = re.sub(r"<svg ", '<svg width="58" height="24" ', svg, count=1)
+    if re.search(r'viewBox="0 0 720 300"', svg):
+        # The official linear logo ships on a 720x300 canvas with wide padding. Crop to the artwork so the mark sits
+        # flush with the page margin and reads at a useful size. The file on disk is not changed.
+        svg = svg.replace('viewBox="0 0 720 300"', 'viewBox="116 76 488 144"', 1)
+        svg = re.sub(r"<svg ", '<svg width="82" height="24" ', svg, count=1)
+    else:
+        svg = re.sub(r"<svg ", '<svg width="58" height="24" ', svg, count=1)
     return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
 
 
@@ -215,10 +221,14 @@ def capability_stat(caps):
     live = sum(len(v) for v in groups.values())
     if not live:
         return stat("Detection capabilities", "n/a", "none assessed")
-    gaps = [(label, groups[k]) for k, label in (("blind", "No data"), ("off", "Off"), ("partial", "Partial"))
-            if groups[k]]
+    gaps = [(label, groups[k]) for k, label in (("blind", "No data"), ("off", "Off"), ("not_licensed", "Not licensed"),
+                                                ("partial", "Partial")) if groups[k]]
     sub = "; ".join(f"{label}: {', '.join(names)}" for label, names in gaps) or "all fully covered"
-    colour = RED if groups["blind"] or groups["off"] else AMBER if groups["partial"] else TEAL
+    unverified = [d for d, c in caps.items() if c["state"] == "unverified"]
+    if unverified:
+        sub += ("; " if gaps else "") + f"Not verified, not counted: {', '.join(unverified)}"
+    colour = (RED if groups["blind"] or groups["off"] or groups["not_licensed"]
+              else AMBER if groups["partial"] else TEAL)
     return stat("Detection capabilities fully active", f"{len(groups['active'])} of {live}", sub, colour)
 
 
@@ -311,9 +321,11 @@ def prepared_for(result):
     # headline names them separately, the same split the summary tile uses.
     blind = [d for d, c in caps.items() if c["state"] == "blind"]
     off = [d for d, c in caps.items() if c["state"] == "off"]
+    unlic = [d for d, c in caps.items() if c["state"] == "not_licensed"]
     dark = blind + off
     low = [d for d, c in caps.items() if c["score"] is not None and 0 < c["score"] < 100]
-    colour = {"active": TEAL, "partial": AMBER, "off": RED, "blind": RED}
+    colour = {"active": TEAL, "partial": AMBER, "off": RED, "blind": RED, "unverified": AMBER,
+              "not_licensed": RED}
 
     def names_of(ds):
         return ", ".join(ds[:-1]) + (" and " if len(ds) > 1 else "") + ds[-1]
@@ -335,6 +347,14 @@ def prepared_for(result):
         headline = (f'<div class="alarm"><b>{esc(title)}</b> {esc(detail)} In an attack, those are the questions '
                     "your team would not be able to answer: what is being encrypted, what is already hiding in the "
                     "backups, what the attacker touched, and what data was exposed.</div>")
+    elif unlic:
+        # Not a failure to configure: the capability is not part of what the customer bought.
+        active = [d for d, c in caps.items() if c["state"] == "active"]
+        headline = (f'<div class="alarm"><b>{len(unlic)} of {len(live)} detection capabilities '
+                    f'{"is" if len(unlic) == 1 else "are"} not licensed: {esc(names_of(unlic))}.</b> '
+                    + (f"{esc(names_of(active))} {'is' if len(active) == 1 else 'are'} active. " if active else "")
+                    + "The unlicensed capabilities need Enterprise Edition. Until then, your team cannot see "
+                    "malware already sitting in the backups or say what data was exposed.</div>")
     elif low:
         headline = (f"<div class='callout'><b>{len(low)} of {len(live)} detection capabilities cover only part of "
                     "the estate.</b> Anything outside that coverage is invisible to the team during an "
@@ -345,7 +365,19 @@ def prepared_for(result):
     cards = []
     for dom in capabilities.DOMAINS:
         c = caps.get(dom)
-        if c is None or c["score"] is None:
+        if c is None:
+            continue
+        if c["score"] is None and c["state"] in capabilities.UNSCORED_SHOWN:
+            # Unverified: shown so the page does not silently drop a capability, but never scored or counted.
+            why = f'<p class="ev"><b>Why:</b> {esc(c["reason"])}</p>' if c.get("reason") else ""
+            cards.append(
+                f'<div class="cap" style="--c:{colour[c["state"]]}"><div class="top"><span class="nm">{esc(dom)}'
+                f'</span><span class="st">{esc(capabilities.STATE_LABEL[c["state"]])}</span></div>'
+                f'<div class="sc">n/a</div>'
+                f'<div class="q">Are you prepared for</div><div class="pf">{esc(capabilities.PREPARED_FOR[dom])}?</div>'
+                f'<p class="ev">{esc(c["evidence"])}</p>{why}</div>')
+            continue
+        if c["score"] is None:
             continue
         col = colour[c["state"]]
         ok = c["state"] == "active"
@@ -357,14 +389,17 @@ def prepared_for(result):
             ids = [f["id"] for f in result.get("findings") or [] if f["domain"] == dom]
             lowered = (f'<p class="ev">Coverage is {c["score"]} of 100. The area score is lower because of open '
                        f'findings in this area: {esc(", ".join(ids))}.</p>')
+        unlicensed = c["state"] == "not_licensed"
+        edition = (f'<p class="ev"><b>Requires {esc(CAPABILITY_EDITION[dom])} Edition.</b></p>' if unlicensed
+                   else f'<p class="ev">Included in {esc(CAPABILITY_EDITION[dom])} Edition and above.</p>')
         cards.append(
             f'<div class="cap" style="--c:{col}"><div class="top"><span class="nm">{esc(dom)}</span>'
             f'<span class="st">{esc(capabilities.STATE_LABEL[c["state"]])}</span></div>'
             f'<div class="sc">{area}<small> / 100</small></div>'
             f'<div class="q">Are you prepared for</div><div class="pf">{esc(capabilities.PREPARED_FOR[dom])}?</div>'
-            f'<p class="ev">Included in {esc(CAPABILITY_EDITION[dom])} Edition and above.</p>'
-            f'<p class="ev">{esc(c["evidence"])}</p>' + lowered
-            + (f'<p class="ev"><b>Why no data:</b> {esc(c["reason"])}</p>' if c.get("reason") else "")
+            + edition + f'<p class="ev">{esc(c["evidence"])}</p>' + lowered
+            + (f'<p class="ev"><b>Why no data:</b> {esc(c["reason"])}</p>'
+               if c.get("reason") and not unlicensed else "")
             + ("" if ok else f'<p class="cons">{esc(capabilities.consequence(dom, c["state"]))}</p>') + "</div>")
     note = ""
     if any(c["state"] == "blind" for c in caps.values()):
@@ -373,9 +408,15 @@ def prepared_for(result):
     if hunt:
         note += (f'<p class="small"><b>Threat hunting (not scored).</b> {esc(hunt)} Threat hunting is an on-demand '
                  f"action, included in {esc(CAPABILITY_EDITION['Threat Hunting'])} Edition and above.</p>")
+    skipped = [d for d, c in caps.items() if c["state"] in capabilities.UNSCORED_SHOWN]
+    confirmed = [d for d, c in caps.items() if c.get("source") == "assessor"]
     intro = (f"<p>{len(caps)} capabilities decide whether your team can see an attack, size it and recover from "
              "it cleanly. Each is scored by what RSC can actually show for your tenant. A capability with no "
-             "data scores zero.</p>")
+             "data, or that is not licensed, scores zero."
+             + (f" {esc(', '.join(skipped))} {'is' if len(skipped) == 1 else 'are'} shown but not scored."
+                if skipped else "")
+             + (f" {esc(', '.join(confirmed))} {'was' if len(confirmed) == 1 else 'were'} confirmed on by your "
+                "Rubrik team and not read from the assessment data." if confirmed else "") + "</p>")
     card_html = '<div class="caps">' + "".join(cards) + "</div>"
     return '<h2 class="pb"><span class="num">1.</span> Are you prepared?</h2>' + intro + headline + card_html + note
 
@@ -391,9 +432,18 @@ def where_you_stand(result, rows, findings):
     rsc = ("".join(f'<tr><td>{esc(labels[k])}</td><td class="r"><b>{s[k]:g}</b></td></tr>'
                    for k in labels if k in s)
            if s else '<tr><td class="small">Not available on this tenant.</td></tr>')
-    unassessed = [d for d, v in rows if v is None]
-    note = (f'<div class="callout"><b>Not assessed:</b> {esc(", ".join(unassessed))}. Data collection failed '
-            "for these areas, so they carry no score.</div>") if unassessed else ""
+    caps = result.get("capabilities") or {}
+    shown = {d: caps[d]["state"] for d in caps if caps[d]["state"] in capabilities.UNSCORED_SHOWN}
+    unassessed = [d for d, v in rows if v is None and d not in shown]
+    parts = []
+    if unassessed:
+        parts.append(f'<div class="callout"><b>Not assessed:</b> {esc(", ".join(unassessed))}. Data collection '
+                     "failed for these areas, so they carry no score.</div>")
+    # A capability left unscored on purpose is not a failed collection, so it gets its own line.
+    if shown:
+        parts.append(f'<div class="callout"><b>Not scored:</b> {esc(", ".join(shown))}: RSC did not return the '
+                     "settings needed to check whether they are turned on. They are left out of the score.</div>")
+    note = "".join(parts)
     top = [f for f in findings if f["severity"] in ("critical", "high")][:3] or findings[:3]
     out = [f'<h2 class="pb"><span class="num">2.</span> Where you stand</h2>',
            f"<p>{len(findings)} findings across {sum(v is not None for _, v in rows)} assessed areas. Scores "
@@ -637,8 +687,8 @@ def appendix(result, findings):
     return "".join(out)
 
 
-def build_html(bundle, previous=None):
-    result = score(bundle)
+def build_html(bundle, previous=None, not_licensed=(), confirmed_active=()):
+    result = score(bundle, not_licensed, confirmed_active)
     rows = domain_rows(result, bundle["data"])
     ov = overall(rows)
     findings = result["findings"]
@@ -696,12 +746,12 @@ def print_to_pdf(html_path, out_path, chrome=None, timeout=180):
                          + (f" Last output: {tail}" if tail else ""))
 
 
-def build(bundle, out_path, previous=None):
+def build(bundle, out_path, previous=None, not_licensed=(), confirmed_active=()):
     """Write report.html next to out_path and print it to out_path with headless Chrome."""
     if not Path(CHROME).exists():
         raise SystemExit(f"Chrome not found at {CHROME}. Set CHROME, or use --style classic.")
     print(logo_status())
-    html, result = build_html(bundle, previous)
+    html, result = build_html(bundle, previous, not_licensed, confirmed_active)
     out_path = Path(out_path)
     html_path = out_path.with_suffix(".html")
     html_path.write_text(html, encoding="utf-8")

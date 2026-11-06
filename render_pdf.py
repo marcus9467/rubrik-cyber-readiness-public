@@ -268,8 +268,8 @@ def progress_page(d):
     return parts
 
 
-def build(bundle, out_path, previous=None):
-    result = score(bundle)
+def build(bundle, out_path, previous=None, not_licensed=(), confirmed_active=()):
+    result = score(bundle, not_licensed, confirmed_active)
     rows = domain_rows(result, bundle["data"])
     ov = overall(rows)
     findings = result["findings"]
@@ -381,16 +381,36 @@ def main():
     ap.add_argument("--style", choices=("brief", "classic"), default="brief",
                     help="brief: HTML printed by Chrome in the technical-brief style (default). "
                          "classic: reportlab, no browser needed")
+    ap.add_argument("--not-licensed", default="", metavar="LIST",
+                    help="comma-separated capabilities the customer does not license: anomaly, monitoring, sdd. "
+                         "They score 0, show as Not licensed with the edition they need, and raise no finding.")
+    ap.add_argument("--confirmed-active", default="", metavar="LIST",
+                    help="comma-separated capabilities you have confirmed are on everywhere but RSC did not report: "
+                         "anomaly, monitoring, sdd. They score 100 and the report says it is your confirmation.")
     args = ap.parse_args()
+    from capabilities import LICENSE_ALIASES
+
+    def names_for(flag, raw):
+        names = [n.strip().lower() for n in raw.split(",") if n.strip()]
+        bad = [n for n in names if n not in LICENSE_ALIASES]
+        if bad:
+            ap.error(f"{flag}: unknown {', '.join(bad)}. Use any of: {', '.join(LICENSE_ALIASES)}")
+        return tuple(LICENSE_ALIASES[n] for n in names)
+
+    not_licensed = names_for("--not-licensed", args.not_licensed)
+    confirmed_active = names_for("--confirmed-active", args.confirmed_active)
+    both = set(not_licensed) & set(confirmed_active)
+    if both:
+        ap.error(f"a capability cannot be both not licensed and confirmed active: {', '.join(sorted(both))}")
     bundle_path = Path(args.bundle).expanduser()
     out = bundle_path.parent / "report.pdf"
     previous = json.loads(Path(args.previous).expanduser().read_text()) if args.previous else None
     if args.style == "brief":
         from render_html import build as build_brief
-        result = build_brief(json.loads(bundle_path.read_text()), out, previous)
+        result = build_brief(json.loads(bundle_path.read_text()), out, previous, not_licensed, confirmed_active)
     else:
         print(logo_status())
-        result = build(json.loads(bundle_path.read_text()), out, previous)
+        result = build(json.loads(bundle_path.read_text()), out, previous, not_licensed, confirmed_active)
     print(f"wrote {out} ({len(result['findings'])} findings)")
 
 

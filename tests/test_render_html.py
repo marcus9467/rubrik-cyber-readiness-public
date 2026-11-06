@@ -103,6 +103,36 @@ def test_blind_card_shows_its_reason_and_active_cards_do_not():
     assert "hidden from the account" not in html
 
 
+def live_tenant_bundle():
+    """Shape seen on a live tenant: score buckets returned with no per-cluster metrics, nothing on threat."""
+    b = bundle()
+    for k in ("ANOMALIES_DETECTED", "SENSITIVE_DATA"):
+        b["data"]["dhrc"]["scores"][k] = {"value": 100, "metrics": []}
+    b["data"]["threat"]["roots"] = {"CDM_CLUSTER": {"total": 10, "threatMonitoringEnabled": 0, "items": [],
+                                                         "notAssessed": []}}
+    return b
+
+
+def test_unlicensed_and_confirmed_report_reads_one_of_three():
+    html, result = build_html(live_tenant_bundle(), not_licensed=("Threat Monitoring", "Sensitive Data Discovery"),
+                              confirmed_active=("Anomaly Detection",))
+    caps = result["capabilities"]
+    assert [caps[d]["score"] for d in caps] == [100, 0, 0]
+    assert "1 of 3" in html
+    assert html.count("Requires Enterprise Edition.") == 2
+    assert "Not licensed" in html and "confirmed on by your Rubrik team" in html
+    assert not [f for f in result["findings"] if f["domain"] in ("Threat Monitoring", "Sensitive Data Discovery")]
+
+
+def test_unverified_card_is_not_scored_and_not_counted():
+    b = bundle()
+    b["data"]["dhrc"]["scores"]["ANOMALIES_DETECTED"] = {"value": 100, "metrics": []}
+    html, result = build_html(b)
+    assert result["capabilities"]["Anomaly Detection"]["state"] == "unverified"
+    assert "Not verified" in html and "Not scored:" in html
+    assert "Data collection failed" not in html
+
+
 def test_tile_for_a_fully_active_tenant():
     html, result = build_html(bundle())
     assert all(c["state"] == "active" for c in result["capabilities"].values())
