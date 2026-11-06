@@ -15,8 +15,19 @@ query Plans($after: String) {
 """
 
 
+NOT_ENTITLED = "NOT_ENTITLED"
+
+
 def collect(client):
-    nodes = client.paginate(PLANS_Q, "recoveryPlansBasicInfo")
+    try:
+        nodes = client.paginate(PLANS_Q, "recoveryPlansBasicInfo")
+    except Exception as e:
+        # RSC answers "Not entitled to access this resource" when the account's role lacks recovery plan access. That
+        # is a permission gap on the assessment account, not a finding about the customer, so name it as such.
+        if "not entitled" in str(e).lower():
+            raise RuntimeError(f"{NOT_ENTITLED}: the assessment account's role cannot read recovery plans. "
+                               f"{str(e)[:200]}") from e
+        raise
     plans = [p for p in nodes if not p.get("isArchived")]
     ran = [p for p in plans if p.get("latestRecovery")]
     return {

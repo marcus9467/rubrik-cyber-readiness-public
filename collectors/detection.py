@@ -81,7 +81,10 @@ def collect(client):
     # Each block below is isolated: a denied field here must never take down T-3 to T-5 above.
     # Only aggregates are stored. Names, URLs, recipients and hostnames never enter the bundle.
     for key, fn in (("webhookRouting", collect_webhook_routing), ("email", collect_email),
-                    ("cdmNotifications", collect_cdm_notifications)):
+                    ("cdmNotifications", collect_cdm_notifications),
+                    ("ransomwareEnablement", collect_ransomware_enablement),
+                    ("dataDiscovery", collect_data_discovery),
+                    ("anomalyScan", collect_anomaly_scan)):
         try:
             out[key] = fn(client)
         except Exception as e:
@@ -161,6 +164,79 @@ def collect_email(client):
     return {"users": len(users),
             "emailEnabled": sum(u.get("isEmailEnabled") is True for u in users),
             "withDigest": sum(bool(u.get("emailConfig")) for u in users)}
+
+
+# Ransomware Monitoring (Anomaly Detection) enablement for the roots that lambdaConfig does not cover. CDM clusters are
+# read from Cluster.lambdaConfig by the threat collector, so they are not here. Only booleans are requested: account
+# and subscription names never enter the bundle.
+RANSOMWARE_ENABLEMENT_Q = """
+query {
+  ransomwareInvestigationEnablement {
+    awsAccounts { enabled isHealthy }
+    azureSubscriptions { enabled isHealthy }
+    gcpProjects { enabled isHealthy }
+    microsoft365Subscriptions { enabled }
+    rubrikCloudVaultLocations { enabled }
+    cloudDirectClusters { enabled }
+  }
+}
+"""
+RANSOMWARE_ROOTS = ("awsAccounts", "azureSubscriptions", "gcpProjects", "microsoft365Subscriptions",
+                    "rubrikCloudVaultLocations", "cloudDirectClusters")
+
+
+def collect_ransomware_enablement(client):
+    """Per root type: how many accounts or locations RSC lists, and how many have Ransomware Monitoring on.
+
+    A root type RSC returns as null is left out (unknown), never counted as zero.
+    """
+    reply = client.query(RANSOMWARE_ENABLEMENT_Q)["ransomwareInvestigationEnablement"]
+    roots = {}
+    for key in RANSOMWARE_ROOTS:
+        items = reply.get(key)
+        if items is None:
+            continue
+        roots[key] = {"total": len(items), "enabled": sum(i.get("enabled") is True for i in items)}
+    return {"roots": roots}
+
+
+DATA_DISCOVERY_Q = ("query { dataDiscoveryObjectsCount { dataDiscoveryAssignedCount dataDiscoveryNotAssignedCount "
+                    "dataDiscoveryNotSupportedCount } }")
+
+
+def collect_data_discovery(client):
+    """Objects with a Data Discovery policy. Positive evidence only: a zero cannot tell 'not licensed' from 'no policy
+    assigned', so the capability model never turns it into a license claim. sensitiveDataSummary is not used, it
+    returns an internal 500 on the lab tenant."""
+    c = client.query(DATA_DISCOVERY_Q)["dataDiscoveryObjectsCount"]
+    return {"assigned": c["dataDiscoveryAssignedCount"], "notAssigned": c["dataDiscoveryNotAssignedCount"],
+            "notSupported": c["dataDiscoveryNotSupportedCount"]}
+
+
+# Anomaly Detection as scanned objects, not as a setting. On the lab tenant the four buckets sum to enabledObjects, so
+# enabledObjects is the whole object universe and unscannedObjects is part of it. A feature can be switched on for every
+# cluster and still have scanned a small share of objects, which the per-cluster setting cannot show.
+ANOMALY_SCAN_Q = """
+query AnomalyScan($b: DateTime!) {
+  anomalyDetectionObjectEnablementStats(beginTime: $b) { enabledObjects }
+  anomaliesObjects(beginTime: $b) {
+    objectsWithAnomalies objectsWithResolvedAnomalies objectsWithoutAnomalies unscannedObjects
+  }
+}
+"""
+SCAN_WINDOW_DAYS = 30  # fixed so reports from different runs compare
+
+
+def collect_anomaly_scan(client, now=None):
+    from datetime import datetime, timedelta, timezone
+    now = now or datetime.now(timezone.utc)
+    begin = (now - timedelta(days=SCAN_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    r = client.query(ANOMALY_SCAN_Q, {"b": begin})
+    o = r["anomaliesObjects"]
+    return {"enabled": r["anomalyDetectionObjectEnablementStats"]["enabledObjects"],
+            "withAnomalies": o["objectsWithAnomalies"], "resolved": o["objectsWithResolvedAnomalies"],
+            "withoutAnomalies": o["objectsWithoutAnomalies"], "unscanned": o["unscannedObjects"],
+            "windowDays": SCAN_WINDOW_DAYS}
 
 
 CDM_Q = """

@@ -15,6 +15,11 @@ States:
   off            RSC reports on it and nothing is turned on (0)
   blind          RSC returned an error or no data for it (0)
   not_collected  the collector never ran, which means an older bundle. Not scored, not compared.
+  unverified     RSC returned the score bucket but no per-cluster enablement metric, so enablement cannot be
+                 checked. Not scored, because the bucket reports what was detected, not what is turned on.
+  not_licensed   the assessor said the customer does not license it (--not-licensed). Scored 0 and counted, because
+                 the customer cannot see that class of attack. The fix is a purchase, so it raises no finding.
+  Confirmed on by the assessor (--confirmed-active) is state active, score 100, with source "assessor".
 
 Threat hunting is not scored. It is an on-demand action for an incident, so a tenant that has never run a hunt has
 not failed anything. hunt_note() reports the history as one unscored line instead.
@@ -25,7 +30,13 @@ RULE_IDS = {"Anomaly Detection": "V-1", "Threat Monitoring": "V-2", "Sensitive D
 # Findings whose resolution lifts the ceiling on a domain's score (see ceilings()).
 FIXERS = {"Anomaly Detection": ("V-1",), "Threat Monitoring": ("V-2", "T-1"), "Sensitive Data Discovery": ("V-4",)}
 STATE_LABEL = {"active": "Active", "partial": "Partial coverage", "off": "Not turned on",
-               "blind": "No data returned", "not_collected": "Not collected"}
+               "blind": "No data returned", "not_collected": "Not collected",
+               "unverified": "Not verified", "not_licensed": "Not licensed"}
+# States that are shown on a card but never scored or counted.
+UNSCORED_SHOWN = ("unverified",)
+# Short names accepted by --not-licensed and --confirmed-active.
+LICENSE_ALIASES = {"anomaly": "Anomaly Detection", "monitoring": "Threat Monitoring",
+                   "sdd": "Sensitive Data Discovery"}
 
 # Wording for the "prepared for" cards and the V findings. Plain language, no edition claims.
 PREPARED_FOR = {
@@ -84,7 +95,7 @@ def _section(data, status, status_key):
 def _result(domain, state, share, evidence, reason=""):
     """reason: fixed text saying why a blind capability is blind. Never built from API text, so redaction cannot
     change it."""
-    score = {"active": 100, "off": 0, "blind": 0, "not_collected": None}.get(state)
+    score = {"active": 100, "off": 0, "blind": 0, "not_licensed": 0, "not_collected": None}.get(state)
     if state == "partial":
         score = max(1, min(99, round((share or 0) * 100)))
     return {"domain": domain, "rule": RULE_IDS[domain], "state": state, "score": score, "share": share,
@@ -94,11 +105,16 @@ def _result(domain, state, share, evidence, reason=""):
 QUERY_FAILED = "The {} query failed, so RSC's answer is unknown."
 NOT_REPORTED = "RSC does not report this capability for the tenant."
 NOTHING_LISTED = "RSC lists no cluster, account or object for it."
+UNVERIFIED_REASON = ("RSC returned the capability's score but none of the per-cluster settings behind it. Confirm "
+                     "it in the RSC console.")
+NOT_LICENSED_TEXT = "Not licensed for this customer, so it provides no coverage."
+CONFIRMED_TEXT = ("Confirmed on everywhere by your Rubrik team. RSC did not return the settings behind it, so this "
+                  "was not read from the assessment data.")
 
 
 def summary(caps):
     """Capabilities grouped by state, in display order, for the summary tile. not_collected ones are left out."""
-    groups = {"active": [], "partial": [], "off": [], "blind": []}
+    groups = {"active": [], "partial": [], "off": [], "blind": [], "not_licensed": []}
     for dom in DOMAINS:
         c = caps.get(dom)
         if c is not None and c["state"] in groups:
@@ -124,6 +140,13 @@ def _cluster_capability(domain, data, status, score_key, metric, what):
                        QUERY_FAILED.format("cluster health"))
     m = _metric(data, score_key, metric)
     if not m:
+        bucket = ((data.get("dhrc") or {}).get("scores") or {}).get(score_key)
+        if isinstance(bucket, dict) and bucket.get("value") is not None and not bucket.get("metrics"):
+            # RSC answered with a score but withheld every per-cluster metric. The score bucket is about what was
+            # detected, so it says nothing about whether the capability is on. Say so rather than score a guess.
+            return _result(domain, "unverified", None,
+                           f"RSC did not return per-cluster {what} settings, so whether it is turned on could not "
+                           "be checked from this assessment.", UNVERIFIED_REASON)
         return _result(domain, "blind", None, f"RSC reports no {what} data for this tenant.", NOT_REPORTED)
     if not m.get("maxValue"):
         # The metric counts clusters. A tenant with none (cloud or SaaS only) has nothing to measure here, which is
@@ -135,14 +158,96 @@ def _cluster_capability(domain, data, status, score_key, metric, what):
     return _result(domain, state, share, f"{what.capitalize()} is on for {v:g} of {mx:g} clusters.")
 
 
+def _cdm_present(data):
+    """True when the tenant has Rubrik clusters, read or not. Their Anomaly Detection setting comes only from the
+    cluster health metric, so without it a cluster is unverified, not off."""
+    roots = ((data.get("threat") or {}).get("roots") or {}) if isinstance(data.get("threat"), dict) else {}
+    cdm = roots.get("CDM_CLUSTER")
+    return isinstance(cdm, dict) and not _is_stub(cdm) and bool(cdm.get("total") or cdm.get("notAssessed"))
+
+
+def _anomaly_from_enablement(data, first):
+    """Fallback when the cluster health score returns no per-cluster Anomaly Detection metric.
+
+    ransomwareInvestigationEnablement lists Ransomware Monitoring per cloud account, M365 subscription, Cloud Direct
+    cluster and RCV location. It says nothing about Rubrik clusters, so full coverage here is only 'active' when the
+    tenant has no Rubrik clusters. Otherwise it is 'unverified'. Anything short of full coverage is a real gap in what
+    was read, so it is scored."""
+    re_ = (data.get("detection") or {}).get("ransomwareEnablement") if isinstance(data.get("detection"), dict) else None
+    roots = (re_ or {}).get("roots") if isinstance(re_, dict) and not _is_stub(re_) else None
+    en = sum(r["enabled"] for r in (roots or {}).values())
+    tot = sum(r["total"] for r in (roots or {}).values())
+    if not tot:
+        return first
+    share = min(1.0, en / tot)
+    cdm = _cdm_present(data)
+    ev = f"Anomaly detection is on for {en} of {tot} cloud and SaaS accounts and locations."
+    if share >= 1 and cdm:
+        return _result("Anomaly Detection", "unverified", None,
+                       ev + " RSC did not return the setting for Rubrik clusters, so whether it is on there could "
+                            "not be checked.", UNVERIFIED_REASON)
+    return {**_result("Anomaly Detection", _classify(share), share,
+                      ev + (" RSC did not return the setting for Rubrik clusters." if cdm else "")),
+            "source": "enablement"}
+
+
+def _scanned_share(block, scanned_keys):
+    """(scanned, total) from an object-scan block, or None when it is missing, an error stub, or has no objects.
+
+    total is the whole object universe: the buckets sum to it on the lab tenant, and unscanned is one of them."""
+    if not isinstance(block, dict) or _is_stub(block):
+        return None
+    try:
+        scanned = sum(block[k] for k in scanned_keys)
+        total = scanned + block["unscanned"]
+    except (KeyError, TypeError):
+        return None
+    return (scanned, total) if total > 0 else None
+
+
+def _scan_result(domain, scanned, total, what):
+    """Scanned share of objects. Nothing scanned is 'off': RSC answered, and no object has been looked at."""
+    share = min(1.0, scanned / total)
+    return {**_result(domain, _classify(share), share,
+                      f"{what} has scanned {scanned:,} of {total:,} objects ({share:.0%})."),
+            "source": "scan"}
+
+
 def anomaly(data, status):
-    return _cluster_capability("Anomaly Detection", data, status, "ANOMALIES_DETECTED",
-                               "RADAR_ENABLED_CLUSTERS", "anomaly detection")
+    det = data.get("detection") if isinstance(data.get("detection"), dict) else {}
+    s = _scanned_share(det.get("anomalyScan"), ("withAnomalies", "resolved", "withoutAnomalies"))
+    if s and _section(data, status, "detection") == "ok":
+        return _scan_result("Anomaly Detection", *s, "Anomaly detection")
+    r = _cluster_capability("Anomaly Detection", data, status, "ANOMALIES_DETECTED",
+                            "RADAR_ENABLED_CLUSTERS", "anomaly detection")
+    if r["state"] in ("blind", "unverified"):
+        return _anomaly_from_enablement(data, r)
+    return r
 
 
 def sensitive(data, status):
-    return _cluster_capability("Sensitive Data Discovery", data, status, "SENSITIVE_DATA",
-                               "DATA_DISCOVERY_ENABLED_CLUSTERS", "sensitive data discovery")
+    r = _cluster_capability("Sensitive Data Discovery", data, status, "SENSITIVE_DATA",
+                            "DATA_DISCOVERY_ENABLED_CLUSTERS", "sensitive data discovery")
+    if r["state"] not in ("blind", "unverified"):
+        return r
+    # Fallback: objects that carry a Data Discovery policy. Only a positive count counts as evidence. A zero cannot
+    # tell 'not licensed' from 'no policy assigned', so it leaves the original reading alone.
+    dd = (data.get("detection") or {}).get("dataDiscovery") if isinstance(data.get("detection"), dict) else None
+    if not isinstance(dd, dict) or _is_stub(dd):
+        return r
+    a, n = dd.get("assigned") or 0, dd.get("notAssigned") or 0
+    if a + n == 0:
+        return r  # RSC lists no supported object, so there is nothing to measure
+    if a == 0:
+        # Policies must be configured to run. RSC answered and none is assigned, so it is not turned on. This says
+        # nothing about the license: an unlicensed tenant and one that never configured a policy look the same.
+        return {**_result("Sensitive Data Discovery", "off", 0.0,
+                          f"No Data Discovery policy is assigned to any of {n:,} supported objects."),
+                "source": "enablement"}
+    share = min(1.0, a / (a + n))
+    return {**_result("Sensitive Data Discovery", _classify(share), share,
+                      f"Data Discovery policies are assigned to {a:,} of {a + n:,} supported objects."),
+            "source": "enablement"}
 
 
 def monitoring(data, status):
@@ -154,6 +259,7 @@ def monitoring(data, status):
     if st == "error" or not isinstance(threat, dict) or _is_stub(threat):
         return _result(dom, "blind", None, "RSC returned no threat monitoring data.",
                        QUERY_FAILED.format("threat monitoring"))
+    scan = _scanned_share(threat.get("scan"), ("withThreats", "withoutThreats"))
     shares, parts = [], []
     # Same roots as rule T-1: Rubrik clusters plus cloud and SaaS accounts. Clusters RSC could not read are not in
     # the total (see notAssessed), so a disconnected cluster is neither credited nor counted as off.
@@ -174,10 +280,18 @@ def monitoring(data, status):
     # threatMonitoringObjectEnablementStats is deliberately not scored: its enabled count can exceed its supported
     # count (tenant-wide, unexplained), so any share built from it would be a guess.
     if not shares:
+        if scan:  # no per-root setting could be read, but RSC says how many objects it has scanned
+            return _scan_result(dom, *scan, "Threat monitoring")
         return _result(dom, "blind", None, "Threat monitoring is not reporting on any account.",
                        NOTHING_LISTED)
     share = sum(shares) / len(shares)
-    return _result(dom, _classify(share), share, "Threat monitoring is on for " + "; ".join(parts) + ".")
+    ev = "Threat monitoring is on for " + "; ".join(parts) + "."
+    if scan:
+        # Evidence only, never the score. The per-root count weighs every account and cluster equally, so it can read
+        # high while most objects are unscanned (18 of 23 roots on, 32% of objects scanned on the lab tenant).
+        s, t = scan
+        ev += f" It has scanned {s:,} of {t:,} objects ({s / t:.0%})."
+    return _result(dom, _classify(share), share, ev)
 
 
 def hunt_note(data, status=None):
@@ -202,10 +316,24 @@ def hunt_note(data, status=None):
 _FUNCS = {"Anomaly Detection": anomaly, "Threat Monitoring": monitoring, "Sensitive Data Discovery": sensitive}
 
 
-def compute(data, status=None):
-    """{domain: result} for the four capabilities, in display order."""
+def compute(data, status=None, not_licensed=None, confirmed_active=None):
+    """{domain: result} for the three capabilities, in display order.
+
+    not_licensed / confirmed_active: domain names the assessor vouches for. They default to data["_not_licensed"] and
+    data["_confirmed_active"], which score() sets, so rules that call compute(d) agree with the report. Not
+    licensed wins if a domain is in both."""
     status = status if status is not None else data.get("_status") or {}
-    return {d: _FUNCS[d](data, status) for d in DOMAINS}
+    skip = set(not_licensed if not_licensed is not None else data.get("_not_licensed") or ())
+    confirmed = set(confirmed_active if confirmed_active is not None else data.get("_confirmed_active") or ())
+    out = {}
+    for d in DOMAINS:
+        if d in skip:
+            out[d] = _result(d, "not_licensed", None, NOT_LICENSED_TEXT)
+        elif d in confirmed:
+            out[d] = {**_result(d, "active", 1.0, CONFIRMED_TEXT), "source": "assessor"}
+        else:
+            out[d] = _FUNCS[d](data, status)
+    return out
 
 
 def ceilings(caps):

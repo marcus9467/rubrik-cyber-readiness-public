@@ -620,6 +620,19 @@ query CdmThreat($after: String) {
         $out['objects'] = (Invoke-RscQuery $Client $statsQ @{ begin = $begin }).threatMonitoringObjectEnablementStats
     }
     catch { $out['objects'] = [ordered]@{ error = (Get-Short $_.Exception.Message) } }
+    # Objects Threat Monitoring has scanned. The buckets sum to the whole object universe, so unscanned is part of it.
+    try {
+        $scanQ = 'query ThreatScan($b: DateTime!) { threatMonitoringObjects(beginTime: $b) { objectsWithThreats objectsWithoutThreats unscannedObjects } }'
+        $begin = Get-IsoUtc ((Get-Date).AddDays(-30))
+        $s = (Invoke-RscQuery $Client $scanQ @{ b = $begin }).threatMonitoringObjects
+        $out['scan'] = [ordered]@{
+            withThreats    = [long]$s.objectsWithThreats
+            withoutThreats = [long]$s.objectsWithoutThreats
+            unscanned      = [long]$s.unscannedObjects
+            windowDays     = 30
+        }
+    }
+    catch { $out['scan'] = [ordered]@{ error = (Get-Short $_.Exception.Message) } }
     return $out
 }
 
@@ -757,8 +770,73 @@ query Cdm($after: String) {
     return $out
 }
 
+# Ransomware Monitoring (Anomaly Detection) enablement for roots that Cluster.lambdaConfig does not cover. Only
+# booleans are requested, so account and subscription names never enter the bundle. A root RSC returns as null is
+# left out (unknown), never counted as zero.
+function Get-RcRansomwareEnablement($Client) {
+    $q = @'
+query {
+  ransomwareInvestigationEnablement {
+    awsAccounts { enabled isHealthy }
+    azureSubscriptions { enabled isHealthy }
+    gcpProjects { enabled isHealthy }
+    microsoft365Subscriptions { enabled }
+    rubrikCloudVaultLocations { enabled }
+    cloudDirectClusters { enabled }
+  }
+}
+'@
+    $reply = (Invoke-RscQuery $Client $q).ransomwareInvestigationEnablement
+    $roots = [ordered]@{}
+    foreach ($key in 'awsAccounts', 'azureSubscriptions', 'gcpProjects', 'microsoft365Subscriptions',
+                     'rubrikCloudVaultLocations', 'cloudDirectClusters') {
+        if ($null -eq $reply.$key) { continue }
+        $items = @(Get-List $reply.$key)
+        $roots[$key] = [ordered]@{
+            total   = $items.Count
+            enabled = @($items | Where-Object { $_.enabled -eq $true }).Count
+        }
+    }
+    return [ordered]@{ roots = $roots }
+}
+
+# Anomaly Detection as scanned objects, not as a setting. The four buckets sum to enabledObjects, so enabledObjects is
+# the whole object universe and unscannedObjects is part of it.
+function Get-RcAnomalyScan($Client) {
+    $q = @'
+query AnomalyScan($b: DateTime!) {
+  anomalyDetectionObjectEnablementStats(beginTime: $b) { enabledObjects }
+  anomaliesObjects(beginTime: $b) {
+    objectsWithAnomalies objectsWithResolvedAnomalies objectsWithoutAnomalies unscannedObjects
+  }
+}
+'@
+    $r = Invoke-RscQuery $Client $q @{ b = (Get-IsoUtc ((Get-Date).AddDays(-30))) }
+    $o = $r.anomaliesObjects
+    return [ordered]@{
+        enabled          = [long]$r.anomalyDetectionObjectEnablementStats.enabledObjects
+        withAnomalies    = [long]$o.objectsWithAnomalies
+        resolved         = [long]$o.objectsWithResolvedAnomalies
+        withoutAnomalies = [long]$o.objectsWithoutAnomalies
+        unscanned        = [long]$o.unscannedObjects
+        windowDays       = 30
+    }
+}
+
+# Objects with a Data Discovery policy. Policies must be configured to run, so zero assigned means not turned on. It
+# says nothing about the license.
+function Get-RcDataDiscovery($Client) {
+    $q = 'query { dataDiscoveryObjectsCount { dataDiscoveryAssignedCount dataDiscoveryNotAssignedCount dataDiscoveryNotSupportedCount } }'
+    $c = (Invoke-RscQuery $Client $q).dataDiscoveryObjectsCount
+    return [ordered]@{
+        assigned     = [long]$c.dataDiscoveryAssignedCount
+        notAssigned  = [long]$c.dataDiscoveryNotAssignedCount
+        notSupported = [long]$c.dataDiscoveryNotSupportedCount
+    }
+}
+
 function Get-RcDetection($Client) {
-    $settingsQ = 'query { lambdaSettings { anomalyThreshold ransomwareThreshold isAnomalyAlertEnabled } }'
+    $settingsQ ='query { lambdaSettings { anomalyThreshold ransomwareThreshold isAnomalyAlertEnabled } }'
     $hooksQ = @'
 query {
   allWebhooksV2 {
@@ -800,6 +878,9 @@ query {
         webhookRouting   = { Get-RcWebhookRouting $Client }
         email            = { Get-RcEmail $Client }
         cdmNotifications = { Get-RcCdmNotifications $Client }
+        ransomwareEnablement = { Get-RcRansomwareEnablement $Client }
+        dataDiscovery    = { Get-RcDataDiscovery $Client }
+        anomalyScan      = { Get-RcAnomalyScan $Client }
     }
     foreach ($key in $blocks.Keys) {
         try { $out[$key] = & $blocks[$key] }
@@ -858,7 +939,15 @@ query Plans($after: String) {
   }
 }
 '@
-    $nodes = Invoke-RscPaginate $Client $q 'recoveryPlansBasicInfo'
+    try { $nodes = Invoke-RscPaginate $Client $q 'recoveryPlansBasicInfo' }
+    catch {
+        # "Not entitled to access this resource" means the assessment account's role cannot read recovery plans. It is a
+        # permission gap on that account, not a finding about the customer, so name it as such.
+        if ($_.Exception.Message -match '(?i)not entitled') {
+            throw "NOT_ENTITLED: the assessment account's role cannot read recovery plans. $(Get-Short $_.Exception.Message)"
+        }
+        throw
+    }
     $plans = @($nodes | Where-Object { -not $_.isArchived })
     $ran = @($plans | Where-Object { $_.latestRecovery })
     return [ordered]@{
