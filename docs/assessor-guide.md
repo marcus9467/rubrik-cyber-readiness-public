@@ -245,17 +245,35 @@ run yourself; the customer collector never needs it.
 
 ### Render the report
 
+PowerShell (finds Python and Chrome for you, and checks the inputs):
+
+```
+./Invoke-RenderReport.ps1 -Bundle /path/to/bundle.redacted.json
+```
+
+or Python directly:
+
 ```
 python3 render_pdf.py --bundle /path/to/bundle.redacted.json
 ```
 
-| Flag | Meaning |
-|---|---|
-| `--bundle` | Path to `bundle.json` or `bundle.redacted.json` (required) |
-| `--previous` | An earlier bundle from the same customer. Adds a "Progress since last run" page. |
-| `--style` | `brief` (default, HTML printed by Chrome) or `classic` (reportlab, no browser) |
+| `render_pdf.py` flag | `Invoke-RenderReport.ps1` parameter | Meaning |
+|---|---|---|
+| `--bundle` | `-Bundle` | Path to `bundle.json`, `bundle.redacted.json`, or the folder holding `bundle.json`. The script defaults to the newest `bundle.json` under `~/CyberReadiness`. |
+| `--previous` | `-Previous` | An earlier bundle from the same customer. Adds a "Progress since last run" page. |
+| `--style` | `-Style` | `brief` (default, HTML printed by Chrome) or `classic` (reportlab, no browser) |
+| `--not-licensed` | `-NotLicensed` | Capabilities the customer does not license: `anomaly`, `monitoring`, `sdd`. They score 0 and raise no finding. |
+| `--confirmed-active` | `-ConfirmedActive` | Capabilities you confirmed are on but RSC did not report. They score 100 and the report says it was your confirmation. |
+| | `-OutFile`, `-OutDir` | Also copy the PDF to a path, or into a folder as `<customer>-report.pdf`. |
+| | `-Open` | Open the PDF when done. |
+
+RSC does not report a tenant's edition or license, so `not_licensed` and `confirmed_active` are only ever what you
+tell the tool. Without either flag, every score comes from collected data.
 
 `report.pdf` is written next to the bundle. In `brief` style, `report.html` is also left beside it.
+`Invoke-RenderReport.ps1` is a thin wrapper around `render_pdf.py`, so the two always produce the same report.
+It needs Python 3 on the machine, and Chrome or Chromium for the `brief` style (set `CHROME` to use another
+browser). It never contacts RSC.
 
 ### Reading a redacted report back to the customer
 
@@ -278,7 +296,7 @@ or, collecting with PowerShell (the bundle lands in `~/CyberReadiness` by defaul
 ```
 ./Invoke-CyberReadiness.ps1 -ServiceAccount /path/to/sa.json -Preflight
 ./Invoke-CyberReadiness.ps1 -ServiceAccount /path/to/sa.json -Customer ACME -Redact
-python3 render_pdf.py --bundle ~/CyberReadiness/ACME/bundle.json
+./Invoke-RenderReport.ps1 -Bundle ~/CyberReadiness/ACME -OutDir ~/Downloads -Open
 ```
 
 ## Data handling and privacy
@@ -635,6 +653,7 @@ Adding a collector:
 | `delta.py` | Compare two bundles |
 | `report_text.py` | Wording shared by both layouts |
 | `render_pdf.py` | Entry point. `--style classic` is the reportlab layout. |
+| `Invoke-RenderReport.ps1` | PowerShell wrapper for `render_pdf.py`. Finds Python and Chrome, checks inputs, copies the PDF. |
 | `render_html.py` | The brief layout, printed to PDF with headless Chrome |
 | `docs/minimum-role.md` | Access guidance (untested) |
 | `tests/` | Test suite |
