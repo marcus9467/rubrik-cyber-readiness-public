@@ -442,6 +442,18 @@ def _unlicensed(d, domain):
     return domain in (d.get("_not_licensed") or ())
 
 
+ROOT_LABEL = {
+    "CDM_CLUSTER": "Rubrik clusters", "AWS_NATIVE_ACCOUNT": "AWS accounts",
+    "AZURE_NATIVE_SUBSCRIPTION": "Azure subscriptions", "GCP_NATIVE_PROJECT": "Google Cloud projects",
+    "M365_SUBSCRIPTION": "Microsoft 365 subscriptions", "CLOUD_DIRECT_CLUSTER": "Cloud Direct clusters",
+}
+
+
+def root_label(name):
+    """Plain wording for a threat root type. An unknown type is shown readable, never as a raw enum."""
+    return ROOT_LABEL.get(name) or name.replace("_", " ").capitalize()
+
+
 def t_threat_monitoring(d):
     roots = d.get("threat", {}).get("roots")
     if not roots or _unlicensed(d, "Threat Monitoring"):
@@ -451,8 +463,7 @@ def t_threat_monitoring(d):
         if "error" in r or r["total"] == 0:
             continue
         if r["threatMonitoringEnabled"] < r["total"]:
-            label = "Rubrik clusters" if name == "CDM_CLUSTER" else name
-            gaps.append(f"{label}: {r['threatMonitoringEnabled']} of {r['total']}")
+            gaps.append(f"{root_label(name)}: {r['threatMonitoringEnabled']} of {r['total']}")
     if not gaps:
         return None
     return _f("T-1", "Threat Monitoring", "medium", "Threat monitoring not enabled everywhere",
@@ -663,7 +674,8 @@ def _visibility(d, domain, rule_id, remediation):
     dark = c["state"] in ("blind", "off")
     title = capabilities.GAP_TITLE[domain][0 if dark else 1]
     sev = "critical" if dark else "high" if (c["share"] or 0) < 0.5 else "medium"
-    return _f(rule_id, domain, sev, title, f"{c['evidence']} {capabilities.consequence(domain, c['state'])}",
+    return _f(rule_id, domain, sev, title,
+              f"{c['evidence']} {capabilities.consequence(domain, c['state'], c.get('source'))}",
               remediation, "visibility")
 
 

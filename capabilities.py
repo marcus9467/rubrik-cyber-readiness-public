@@ -64,8 +64,23 @@ PARTIAL_CONSEQUENCE = {
 }
 
 
-def consequence(domain, state):
-    """The one-line business consequence. Partial coverage gets its own wording; off and blind get the full line."""
+# A partial reading built from scanned objects is about objects, not clusters. Saying "outside the covered clusters"
+# there contradicts the evidence line printed above it ("has scanned 475 of 2,069 objects").
+SCAN_PARTIAL_CONSEQUENCE = {
+    "Anomaly Detection": "Objects that have not been scanned are not watched for abnormal change, so an attack on "
+                         "them can run unnoticed.",
+    "Threat Monitoring": "Objects that have not been scanned are not checked for known malicious indicators, so a "
+                         "restore point containing them can carry the attacker straight back in.",
+    "Sensitive Data Discovery": "Objects that have not been classified are not covered, so after a breach the "
+                                "exposure on them cannot be sized.",
+}
+
+
+def consequence(domain, state, source=None):
+    """The one-line business consequence. Partial coverage gets its own wording; off and blind get the full line.
+    source 'scan' means the share is of objects, so the partial line talks about objects and not clusters."""
+    if state == "partial" and source == "scan":
+        return SCAN_PARTIAL_CONSEQUENCE[domain]
     return (PARTIAL_CONSEQUENCE if state == "partial" else CONSEQUENCE)[domain]
 
 

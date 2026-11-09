@@ -22,7 +22,7 @@ import capabilities
 import inventory_report
 from delta import compute as compute_delta, describe_change
 from frameworks import CSF_NAMES
-from posture import DOMAIN_SOURCES, domain_rows, overall
+from posture import appendix_domains, domain_rows, overall
 from editions import CAPABILITY_EDITION
 from report_text import BUCKET_LABEL, BUCKET_NOTE, METHOD_NOTES, PHASE_TITLE
 from roadmap import csf_rows, plan, projections
@@ -400,7 +400,7 @@ def prepared_for(result):
             + edition + f'<p class="ev">{esc(c["evidence"])}</p>' + lowered
             + (f'<p class="ev"><b>Why no data:</b> {esc(c["reason"])}</p>'
                if c.get("reason") and not unlicensed else "")
-            + ("" if ok else f'<p class="cons">{esc(capabilities.consequence(dom, c["state"]))}</p>') + "</div>")
+            + ("" if ok else f'<p class="cons">{esc(capabilities.consequence(dom, c["state"], c.get("source")))}</p>') + "</div>")
     note = ""
     if any(c["state"] == "blind" for c in caps.values()):
         note = f'<p class="small">{esc(capabilities.BLIND_NOTE)}</p>'
@@ -673,10 +673,9 @@ def appendix(result, findings):
     by = {}
     for f in findings:
         by.setdefault(f["domain"], []).append(f)
-    for dom in DOMAIN_SOURCES:
-        if dom in by:
-            out.append(f"<h3>{esc(dom)}</h3>")
-            out += [finding(f) for f in by[dom]]
+    for dom in appendix_domains(findings):
+        out.append(f"<h3>{esc(dom)}</h3>")
+        out += [finding(f) for f in by[dom]]
     out.append('<h2 class="pb">Method and limits</h2><ul>' + "".join(f"<li>{esc(n)}</li>" for n in METHOD_NOTES)
                + "</ul><h3>Collector status</h3><table>"
                + "".join(f"<tr><td style='width:90pt'>{esc(k)}</td><td>{esc(v if v == 'ok' else v[:90])}</td></tr>"
