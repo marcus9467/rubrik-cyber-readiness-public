@@ -225,10 +225,29 @@ def anomaly(data, status):
     return r
 
 
+def _policy_coverage(data):
+    """'Data Discovery policies are assigned to X of Y supported objects (Z%).' or None.
+
+    Evidence only. Policies must be configured to run, so this is the share of objects Data Discovery is actually set
+    up to classify, which the per-cluster setting cannot show (6 of 8 clusters on, 61% of objects covered on the lab
+    tenant). None when the count is missing, an error stub, or RSC lists no supported object."""
+    dd = (data.get("detection") or {}).get("dataDiscovery") if isinstance(data.get("detection"), dict) else None
+    if not isinstance(dd, dict) or _is_stub(dd):
+        return None
+    a, n = dd.get("assigned") or 0, dd.get("notAssigned") or 0
+    if a + n == 0:
+        return None
+    return f"Data Discovery policies are assigned to {a:,} of {a + n:,} supported objects ({a / (a + n):.0%})."
+
+
 def sensitive(data, status):
     r = _cluster_capability("Sensitive Data Discovery", data, status, "SENSITIVE_DATA",
                             "DATA_DISCOVERY_ENABLED_CLUSTERS", "sensitive data discovery")
     if r["state"] not in ("blind", "unverified"):
+        cov = _policy_coverage(data)
+        # Only a reading built from the cluster setting gets the extra line. It never changes the score or the state.
+        if cov and r["state"] in ("active", "partial", "off") and r.get("evidence"):
+            return {**r, "evidence": r["evidence"] + " " + cov}
         return r
     # Fallback: objects that carry a Data Discovery policy. Only a positive count counts as evidence. A zero cannot
     # tell 'not licensed' from 'no policy assigned', so it leaves the original reading alone.

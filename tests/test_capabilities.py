@@ -293,3 +293,31 @@ def test_threat_monitoring_scan_share_is_evidence_and_never_changes_the_per_root
     assert "scanned 40 of 100 objects (40%)" in c["evidence"]
     d["threat"]["scan"] = {"error": "denied"}
     assert "scanned" not in compute(d, OK)["Threat Monitoring"]["evidence"]
+
+
+def _dd(assigned=2376, not_assigned=1548):
+    return {"detection": {"settings": {}, "hunts": {}, "dataDiscovery": {"assigned": assigned, "notAssigned": not_assigned}}}
+
+
+def test_sensitive_data_policy_coverage_is_evidence_and_never_changes_the_cluster_score():
+    d = data(sdd=(6, 8), **_dd())
+    c = compute(d, OK)["Sensitive Data Discovery"]
+    assert c["state"] == "partial" and c["score"] == 75
+    assert c["evidence"].count("policies are assigned") == 1
+    assert "on for 6 of 8 clusters" in c["evidence"]
+    assert "assigned to 2,376 of 3,924 supported objects (61%)" in c["evidence"]
+
+
+def test_sensitive_data_policy_coverage_is_left_out_when_unreadable_or_empty():
+    for dd in ({"error": "denied"}, {"assigned": 0, "notAssigned": 0}):
+        d = data(sdd=(6, 8), detection={"settings": {}, "hunts": {}, "dataDiscovery": dd})
+        c = compute(d, OK)["Sensitive Data Discovery"]
+        assert c["score"] == 75 and "policies" not in c["evidence"]
+    assert "policies" not in compute(data(sdd=(6, 8)), OK)["Sensitive Data Discovery"]["evidence"]
+
+
+def test_sensitive_data_fallback_reading_does_not_repeat_the_policy_line():
+    d = data(**_dd(30, 10))
+    d["dhrc"]["scores"].pop("SENSITIVE_DATA")
+    c = compute(d, OK)["Sensitive Data Discovery"]
+    assert c["evidence"].count("policies are assigned") == 1
