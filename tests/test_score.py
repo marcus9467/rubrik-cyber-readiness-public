@@ -525,3 +525,11 @@ def test_sso_rule_fires_only_on_an_explicit_false():
     assert "A-3" not in ids(b)
     acc["hasIdp"] = None
     assert "A-3" not in ids(b)
+
+
+def test_t1_names_root_types_in_plain_words_never_as_raw_enums():
+    from score import root_label
+    assert root_label("GCP_NATIVE_PROJECT") == "Google Cloud projects"
+    assert root_label("CLOUD_DIRECT_CLUSTER") == "Cloud Direct clusters"
+    assert root_label("SOME_NEW_ROOT") == "Some new root"
+    assert "_" not in root_label("SOME_NEW_ROOT")

@@ -186,3 +186,28 @@ def test_posture_score_matches_the_scorer():
     html, result = build_html(b)
     assert f"{len(result['findings'])}</div>" in html
     assert score(b)["counts"] == result["counts"]
+
+
+def _appendix(html):
+    return html.split("Appendix. Technical findings")[1].split("Method and limits")[0]
+
+
+def test_every_finding_has_an_appendix_entry_including_the_capability_areas():
+    # The roadmap lists every id, so an id appearing anywhere in the html proves nothing. Check the appendix itself.
+    b = bundle(encryptionOff=1, supportTunnelOpen=1)
+    b["data"]["dhrc"]["scores"]["ANOMALIES_DETECTED"]["metrics"][0]["value"] = 0  # off, so V-1 fires
+    html, result = build_html(b)
+    cap = {"Anomaly Detection", "Threat Monitoring", "Sensitive Data Discovery"}
+    ids = [f["id"] for f in result["findings"]]
+    assert any(f["domain"] in cap for f in result["findings"]), "fixture should produce a capability finding"
+    appendix = _appendix(html)
+    missing = [i for i in ids if f">{i}<" not in appendix and f"{i} " not in appendix]
+    assert not missing, missing
+
+
+def test_appendix_domains_orders_known_areas_and_keeps_unknown_ones():
+    from posture import DOMAIN_ORDER, appendix_domains
+    out = appendix_domains([{"domain": "Recovery"}, {"domain": "Zebra"}, {"domain": "Identity"},
+                            {"domain": "Anomaly Detection"}])
+    assert out == [d for d in DOMAIN_ORDER if d in ("Identity", "Anomaly Detection", "Recovery")] + ["Zebra"]
+    assert appendix_domains([]) == []

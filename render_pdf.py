@@ -20,7 +20,7 @@ from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, Simpl
 
 from delta import compute as compute_delta, describe_change
 from frameworks import CSF_NAMES
-from posture import DOMAIN_SOURCES, domain_rows, overall
+from posture import appendix_domains, domain_rows, overall
 from report_text import BUCKET_LABEL, BUCKET_NOTE, PHASE_TITLE
 from roadmap import csf_rows, plan, projections
 from score import score
@@ -331,9 +331,7 @@ def build(bundle, out_path, previous=None, not_licensed=(), confirmed_active=())
     by_domain = {}
     for f in findings:
         by_domain.setdefault(f["domain"], []).append(f)
-    for dom in DOMAIN_SOURCES:
-        if dom not in by_domain:
-            continue
+    for dom in appendix_domains(findings):
         # Keep the heading with its first card; keepWithNext does not reach into a KeepTogether.
         fs = by_domain[dom]
         story.append(KeepTogether([P(dom, H2)] + finding_parts(fs[0])))

@@ -321,3 +321,19 @@ def test_sensitive_data_fallback_reading_does_not_repeat_the_policy_line():
     d["dhrc"]["scores"].pop("SENSITIVE_DATA")
     c = compute(d, OK)["Sensitive Data Discovery"]
     assert c["evidence"].count("policies are assigned") == 1
+
+
+def test_scan_based_partial_consequence_talks_about_objects_not_clusters():
+    from capabilities import consequence
+    for dom in ("Anomaly Detection", "Threat Monitoring", "Sensitive Data Discovery"):
+        scan = consequence(dom, "partial", "scan")
+        assert "cluster" not in scan.lower() and "object" in scan.lower()
+        assert consequence(dom, "partial") != scan  # a cluster-setting reading keeps its cluster wording
+        assert consequence(dom, "off", "scan") == consequence(dom, "off")  # only partial changes
+
+
+def test_scan_reading_reaches_the_finding_text():
+    d = data(detection={"settings": {}, "hunts": {}, **_scan()})
+    from score import v_anomaly
+    f = v_anomaly({**d, "_status": OK})
+    assert f and "scanned 30 of 100" in f["evidence"] and "cluster" not in f["evidence"].lower().split("scanned")[1]

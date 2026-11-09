@@ -19,6 +19,14 @@ DOMAIN_ORDER = ["Identity", "MFA", "Quorum", "Access", "RBAC", "Immutability", "
                 *CAPABILITY_DOMAINS, "Alerting", "Recovery"]
 
 
+def appendix_domains(findings):
+    """Areas to print in the appendix, in display order. DOMAIN_SOURCES leaves out the capability areas on purpose
+    (they are never 'not assessed'), so looping over it dropped their findings. Any area a finding uses that
+    DOMAIN_ORDER does not list goes last, so no finding can be left out."""
+    used = {f["domain"] for f in findings}
+    return [d for d in DOMAIN_ORDER if d in used] + sorted(used - set(DOMAIN_ORDER))
+
+
 def has_error(node, depth=0):
     """True if a collected section, or a sub-section one or two levels down, is an error stub."""
     if isinstance(node, dict):
