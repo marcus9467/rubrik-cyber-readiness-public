@@ -5,8 +5,8 @@
 .DESCRIPTION
     Read-only. Issues GraphQL queries against Rubrik Security Cloud (RSC) with a service account and writes
     bundle.json (raw), plus bundle.redacted.json and redaction-map.json when -Redact is set.
-    The bundle schema is identical to the Python collector (collect.py), so the assessor renders the report
-    from either one with render_pdf.py.
+    The bundle schema is identical to the Python collector (collect.py), so the Rubrik team reads a bundle
+    from either one the same way.
 
     Runs on Windows PowerShell 5.1 and PowerShell 7+. No modules to install.
 

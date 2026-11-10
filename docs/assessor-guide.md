@@ -27,7 +27,7 @@ with evidence and fix steps, and a 30/60/90 day roadmap.
 
 ## Who does what
 
-The work splits in two so the customer never needs a browser, fonts or the report tooling.
+The customer collects and redacts. The report is built by the Rubrik team and is not part of this repository.
 
 | Step | Who | Needs | Output |
 |---|---|---|---|
@@ -35,7 +35,6 @@ The work splits in two so the customer never needs a browser, fonts or the repor
 | Preflight | Customer | PowerShell, or Python 3 and `requests` | Pass/fail per section |
 | Collect and redact | Customer | PowerShell, or Python 3 and `requests` | `bundle.redacted.json` |
 | Review and send | Customer security team | A text editor | `bundle.redacted.json` only |
-| Render the PDF | Assessor | Python 3, Google Chrome or Chromium | `report.pdf` |
 
 ## What the assessment covers
 
@@ -203,78 +202,6 @@ Send **only** `bundle.redacted.json`.
 
 ## Assessor guide
 
-### Requirements
-
-| Requirement | Why |
-|---|---|
-| Python 3.12 | Tested version |
-| Google Chrome or Chromium | Prints the HTML report to PDF. Found automatically on macOS, Linux and Windows. Set `CHROME` to override. |
-| Brand assets | None needed. The report is neutral by default; see [Branding the report](#branding-the-report). |
-| `pip install reportlab` | Only for `--style classic`, which needs no browser |
-
-The report uses system fonts and a text mark unless you brand it. The optional fonts in `assets/fonts/` are
-licensed under the SIL Open Font License (the license files sit beside them).
-
-### Branding the report
-
-The repository ships a neutral report: plain palette, system fonts, a generic "Confidential" footer and a text
-mark. Your look lives in a local `brand/` folder. Git ignores it, so it cannot be committed by accident.
-
-| File in `brand/` | What it does |
-|---|---|
-| `logo.svg` | Logo for the `brief` style (default), drawn at 58 x 24 pt |
-| `logo.png` | Logo for the `classic` style, square, drawn at 0.5 in |
-| `brand.json` | Palette, footer, header, text mark, PDF author, bundled fonts. Every key is optional |
-
-Copy [docs/brand.example.json](brand.example.json) to `brand/brand.json` and edit it. Palette keys are `ink`,
-`muted`, `soft`, `accent`, `accent2`, `card_bg`, `card_line`, `rule`, `red` and `amber`, each `#RRGGBB`. A bad
-value or a malformed file is ignored and the neutral default is used. `bundled_fonts: true` embeds the Open
-Font License fonts in `assets/fonts/`. Set `CRR_BRAND_DIR` to use a different folder, for example one per brand.
-
-The older `assets/rubrik-logo-primary-linear.svg` and `assets/rubrik-logo.png` paths still work as a fallback.
-
-Every render prints one `logo:` line, so check it before the PDF goes to a customer:
-
-```
-logo: using /path/to/assets/rubrik-logo-primary-linear.svg
-logo: not found, using the text mark. To brand the report, add /path/to/assets/rubrik-logo-primary-linear.svg
-```
-
-A file that exists but is not an SVG is reported and skipped. Only add the logo to a copy of the toolkit you
-run yourself; the customer collector never needs it.
-
-### Render the report
-
-PowerShell (finds Python and Chrome for you, and checks the inputs):
-
-```
-./Invoke-RenderReport.ps1 -Bundle /path/to/bundle.redacted.json
-```
-
-or Python directly:
-
-```
-python3 render_pdf.py --bundle /path/to/bundle.redacted.json
-```
-
-| `render_pdf.py` flag | `Invoke-RenderReport.ps1` parameter | Meaning |
-|---|---|---|
-| `--bundle` | `-Bundle` | Path to `bundle.json`, `bundle.redacted.json`, or the folder holding `bundle.json`. The script defaults to the newest `bundle.json` under `~/CyberReadiness`. |
-| `--previous` | `-Previous` | An earlier bundle from the same customer. Adds a "Progress since last run" page. |
-| `--style` | `-Style` | `brief` (default, HTML printed by Chrome) or `classic` (reportlab, no browser) |
-| `--not-licensed` | `-NotLicensed` | Capabilities the customer does not license: `anomaly`, `monitoring`, `sdd`. They score 0 and raise no finding. |
-| `--confirmed-active` | `-ConfirmedActive` | Capabilities you confirmed are on but RSC did not report. They score 100 and the report says it was your confirmation. |
-| | `-OutFile`, `-OutDir` | Also copy the PDF to a path, or into a folder as `<customer>-report.pdf`. |
-| | `-Open` | Open the PDF when done. |
-
-RSC does not report a tenant's edition or license, so `not_licensed` and `confirmed_active` are only ever what you
-tell the tool. Without either flag, every score comes from collected data.
-
-`report.pdf` is written next to the bundle. In `brief` style, `report.html` is also left beside it.
-`Invoke-RenderReport.ps1` is a thin wrapper around `render_pdf.py`, so the two always produce the same report.
-It needs Python 3 on the machine, and Chrome or Chromium for the `brief` style (set `CHROME` to use another
-browser). It never contacts RSC.
-
 ### Reading a redacted report back to the customer
 
 Findings name objects by pseudonym. The customer holds `redaction-map.json`, so they translate. Do not ask
@@ -282,13 +209,12 @@ for the map. If you need a specific object identified, ask them to look it up.
 
 ### Running it yourself
 
-If you have credentials for the tenant (a lab, or a customer who gave you access directly), run the three
+If you have credentials for the tenant (a lab, or a customer who gave you access directly), run the two
 steps in sequence:
 
 ```
 python3 preflight.py --sa /path/to/sa.json
 python3 collect.py   --sa /path/to/sa.json --customer ACME --redact
-python3 render_pdf.py --bundle ~/.local/share/cyber-readiness/ACME/bundle.json
 ```
 
 or, collecting with PowerShell (the bundle lands in `~/CyberReadiness` by default):
@@ -296,7 +222,6 @@ or, collecting with PowerShell (the bundle lands in `~/CyberReadiness` by defaul
 ```
 ./Invoke-CyberReadiness.ps1 -ServiceAccount /path/to/sa.json -Preflight
 ./Invoke-CyberReadiness.ps1 -ServiceAccount /path/to/sa.json -Customer ACME -Redact
-./Invoke-RenderReport.ps1 -Bundle ~/CyberReadiness/ACME -OutDir ~/Downloads -Open
 ```
 
 ## Data handling and privacy
@@ -525,8 +450,6 @@ Keep the first bundle. Collecting again overwrites `bundle.json`, so copy the fi
 
 ```
 python3 collect.py    --sa /path/to/sa.json --customer ACME --redact
-python3 render_pdf.py --bundle <out>/ACME/bundle.redacted.json --previous /path/to/first/bundle.json
-python3 delta.py /path/to/first/bundle.json <out>/ACME/bundle.json    # text-only comparison
 ```
 
 If the customer collects with PowerShell, replace the first line with
@@ -550,13 +473,10 @@ yourself.
 | `retries exhausted` | Repeated 429 or 5xx from RSC | Retry later. The client already backs off 3 times. |
 | A whole area shows "not assessed" | Collector failed or was denied | Run preflight to see which query and why |
 | Coverage looks too low | Role scoped to part of the hierarchy | Re-scope the role to all objects |
-| `Chrome not found at ...` | No Chrome or Chromium on the usual paths or on `PATH` | Install one, set `CHROME` to its full path, or use `--style classic` |
 | `Chrome did not finish within 180 seconds` | Very large report or a hung Chrome | Close other Chrome instances and retry |
 | Text "Rubrik" mark instead of the logo | The logo is not in the repository. The render prints a `logo:` line saying what it found | See [Branding the report](#branding-the-report) |
-| Plain system fonts | `bundled_fonts` is not set in `brand/brand.json`, or `assets/fonts/` is incomplete | Set it, or restore `assets/fonts/` |
 | `...cannot be loaded because running scripts is disabled` (PowerShell) | Windows execution policy | `powershell -ExecutionPolicy Bypass -File .\Invoke-CyberReadiness.ps1 ...` |
 | `ModuleNotFoundError: requests` | Dependency missing | `pip install requests` |
-| `ModuleNotFoundError: reportlab` | Using `--style classic` | `pip install reportlab` |
 
 ## Known limits
 
@@ -626,7 +546,6 @@ Adding a collector:
 1. Add `collectors/<name>.py` with a `collect(client)` function. Isolate each sub-query so one failure
    records an error stub instead of raising.
 2. Register it in `COLLECTORS` in `collect.py`.
-3. Add rules in `score.py`, wording in `report_text.py`, and framework tags in `frameworks.py`.
 4. Add the name-bearing fields to `redact.py` and a case to `tests/test_redact.py`.
 5. Use queries only. Never add a mutation.
 
@@ -647,13 +566,6 @@ Adding a collector:
 | `tier0.py` | Likely Tier-0 asset detection |
 | `rbac.py` | Role and permission analysis |
 | `capabilities.py` | The four detection capabilities |
-| `roadmap.py` | 30/60/90 day phases and projected score |
 | `remediation.py` | Fix steps and documentation links |
-| `posture.py` | Which areas were assessed, shared by report and delta |
-| `delta.py` | Compare two bundles |
-| `report_text.py` | Wording shared by both layouts |
-| `render_pdf.py` | Entry point. `--style classic` is the reportlab layout. |
-| `Invoke-RenderReport.ps1` | PowerShell wrapper for `render_pdf.py`. Finds Python and Chrome, checks inputs, copies the PDF. |
-| `render_html.py` | The brief layout, printed to PDF with headless Chrome |
 | `docs/minimum-role.md` | Access guidance (untested) |
 | `tests/` | Test suite |

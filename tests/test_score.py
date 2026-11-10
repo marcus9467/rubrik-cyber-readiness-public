@@ -489,16 +489,6 @@ def test_silent_cdm_cluster_rule_needs_neither_channel():
     assert "T-9" not in ids(b), "unreadable clusters are unknown, not a gap"
 
 
-def test_new_alerting_blocks_failing_does_not_unassess_alerting():
-    from posture import domain_rows
-    b = hardened()
-    b["status"] = {k: "ok" for k in b["data"]}
-    b["data"]["detection"]["email"] = {"error": "denied"}
-    b["data"]["detection"]["webhookRouting"] = {"error": "denied"}
-    b["data"]["detection"]["cdmNotifications"] = {"error": "denied"}
-    assert dict(domain_rows(score(b), b["data"]))["Alerting"] is not None
-
-
 def test_backup_health_rule_scales_and_stays_silent_when_clean_or_unknown():
     b = hardened()
     inv = b["data"]["inventory"]
