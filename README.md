@@ -20,7 +20,7 @@ findings, evidence, fix steps and a 30/60/90 day roadmap.
 | 4 | [Review the file](#4-review-the-file) | You and your security team | Your call |
 | 5 | [Send it](#5-send-the-file) | You | 1 min |
 | 6 | [Clean up](#6-clean-up) | You | 2 min |
-| 7 | Receive the PDF | Your Rubrik team | After they render it |
+| 7 | Receive your results | Your Rubrik team | After they review the file |
 
 ## Before you start
 
@@ -30,7 +30,7 @@ You need:
 - Network access from your machine to your RSC address (the host in the service account file).
 - An RSC user who can create service accounts and roles.
 
-You do **not** need Chrome, fonts or any Rubrik assets. Your Rubrik team uses those to build the PDF.
+You do **not** need Chrome, fonts or any Rubrik assets.
 
 > **Windows PowerShell 5.1 is not yet verified.** If your machine only has the older "Windows PowerShell"
 > (blue window, `powershell.exe`), install PowerShell 7 or use the Python option.
@@ -212,5 +212,5 @@ last-login times. It never reads or writes client secrets.
 
 ## For your Rubrik team
 
-Rendering the PDF, reading scores, alerting guidance, re-running to track progress, and development notes are in
+Reading scores, alerting guidance, re-running to track progress, and development notes are in
 [docs/assessor-guide.md](docs/assessor-guide.md).
